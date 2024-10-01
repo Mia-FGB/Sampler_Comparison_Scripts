@@ -1,10 +1,14 @@
 #!/usr/bin/python 3
 
+#details about his script here - https://docs.google.com/document/d/1uldwa4ep4Pr1NrD6hmcmLY3AL-vCiniPYVSswhX1kF8/edit
+
 import sklearn as sk
 from sklearn import preprocessing
 import pandas as pd
 import matplotlib.pyplot as plt
 
+
+#These paths need changing
 raw_data = pd.read_csv('../taxonomy_totalread.csv')
 seq_info = pd.read_csv('../sequencing_details_samp_comp.csv')
 

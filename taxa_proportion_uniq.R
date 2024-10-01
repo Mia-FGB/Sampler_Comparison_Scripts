@@ -10,34 +10,48 @@ library(scales)
 sampler_colours <- c('#BBCC33', '#77AADD', '#EE8866', '#EEDD88',  '#99DDFF')
 theme_set(theme_bw())
 
+#sample meta data (this hasn't changed)
+meta <- read.csv("../old_parameters_MARTI_samp_comp_read_data/Phyloseq_data/Sample_table.csv")
+
 #Marti-------------
 #Loading in data 
-marti_sum <- read.csv("MARTI_samp_comp_updated_parameters_0823/marti_output_august23_summarised_taxaname.csv")
-marti_species <- marti_sum %>% 
-  filter(Rank == "species") %>% #filter to retain species only
-  subset(select = -NCBI_ID)
+#Older data
+#marti_sum <-read.csv("../Older MARTi Runs/MARTI_samp_comp_updated_parameters_0823/marti_output_august23_summarised_taxaname.csv")
 
-marti_genus <- marti_sum %>% 
+#New MARTi analysis 2024
+marti_sum <- read.csv("../samp_comp_0624_marti/samp_comp_summed_0624.csv")
+
+# marti_species <- marti_sum %>% 
+#   filter(Rank == "species") %>% #filter to retain species only
+#   subset(select = -NCBI_ID)
+
+
+marti_genus <- marti_sum %>%
   filter(Rank == "genus") %>%
   subset(select = -NCBI_ID)
 
-marti_phylum <- marti_sum %>% 
-  filter(Rank == "phylum") %>%
-  subset(select = -NCBI_ID)
+# marti_phylum <- marti_sum %>% 
+#   filter(Rank == "phylum") %>%
+#   subset(select = -NCBI_ID)
 
 #Across whole group analysis ----------------------------------------------------
+
+#Data Wrangling -------------------------------
+
+#Do each taxonomic level one at a time through whole script, starting with species!
 # Convert non-zero counts to 1 for presence
-#marti_presence_data <- marti_species 
-#marti_presence_data[, -c(1,2)] <-
-#  ifelse(marti_species[,-c(1,2)] > 0, 1, 0) #returns 1 if count > 0, else 0; ignores first 2 cols
 
-#marti_presence_data <- marti_genus 
-#marti_presence_data[, -c(1,2)] <-
-#  ifelse(marti_genus[,-c(1,2)] > 0, 1, 0) 
+# marti_presence_data <- marti_species 
+# marti_presence_data[, -c(1,2)] <-
+#   ifelse(marti_species[,-c(1,2)] > 0, 1, 0) #returns 1 if count > 0, else 0; ignores first 2 cols
 
-marti_presence_data <- marti_phylum 
+marti_presence_data <- marti_genus
 marti_presence_data[, -c(1,2)] <-
-  ifelse(marti_phylum[,-c(1,2)] > 0, 1, 0) 
+ ifelse(marti_genus[,-c(1,2)] > 0, 1, 0)
+
+#marti_presence_data <- marti_phylum 
+#marti_presence_data[, -c(1,2)] <-
+#  ifelse(marti_phylum[,-c(1,2)] > 0, 1, 0) 
 
 #Unique taxa 
 unique_phy <- marti_presence_data$Taxon[rowSums(marti_presence_data[, -c(1,2)]) == 1] #Sum row 1 = unique taxa.
@@ -49,166 +63,212 @@ marti_unique_sample_name <-
   melt(marti_unique_phy, id.vars = c("Taxon", "Rank")) %>% # Melt the data to long
   filter(value == 1) #Only keep present taxa
          
-#write.csv(marti_unique_sample_name, "MARTI_samp_comp_updated_parameters_0823/unique_genus_name_sample.csv")  
+write.csv(marti_unique_sample_name, "../samp_comp_0624_marti/unique_genus_names_0624.csv")  
                           
 num_uniq <- marti_unique_sample_name %>% 
   group_by(variable) %>% 
   summarise(count = n()) #no uniq species per sample
 
-#write.csv(num_uniq, "MARTI_samp_comp_updated_parameters_0823/unique_species_num_sample.csv") 
-#write.csv(num_uniq, "MARTI_samp_comp_updated_parameters_0823/unique_genus_num_sample.csv") 
-#Edit in Excel to include samples with 0 & Sampler, Location 
+#Samples with 0 uniq species - need to check and change this with each analysis 
+missing_samples_1 <- data.frame(
+  variable = c("CF_Bobcat_3","CF_Cub_4","CF_Micro_2", "CF_Micro_3",
+               "CF_SASS_1", "CF_SASS_2","CF_SASS_4", "NHM_Cub_3",
+               "NHM_SASS_2","NHM_SASS_3","NHM_SASS_4"),
+  count = c("0", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"))
 
-#uniq_sp <- read.csv("MARTI_samp_comp_updated_parameters_0823/unique_species_num_sample_edit.csv")
-uniq <-  read.csv("MARTI_samp_comp_updated_parameters_0823/unique_genus_num_sample_edit.csv")
+uniq <- rbind(num_uniq, missing_samples_1) %>%
+  rename(uniq_count = count, Sample_ID = variable)
 
+uniq$uniq_count <- as.numeric(uniq$uniq_count) #uniq_count as numeric
+
+#Use the metadata to get sampler and location column
+uniq <- uniq %>%
+  left_join(meta, by = "Sample_ID") 
+
+#Plotting------------------------
 
 #Plot - Group by location 
-location_uniq_ge <- ggplot(uniq, aes(x=sample_ID, y = uniq_ge_count, fill = Sampler)) +
+location_uniq <- ggplot(uniq, aes(x=Sample_ID, y = uniq_count, fill = Sampler)) +
   geom_bar(stat = "identity") +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0.5)) +
   facet_grid(~Location, scales ="free_x") +
   scale_fill_manual(values = sampler_colours) +
   labs( x = "Sample",
-        y = "Number of unique genus") 
+        y = "Number of unique genera") 
+
+ggsave("../Images/graphs_marti_0624/uniq_shared/Unique_Genus_Location.svg",
+       plot = location_uniq , device = "svg", width = 10, height = 7)
+
+#Plot - Group by Sample length 
+length_uniq <- ggplot(uniq, aes(x=Sample_ID, y = uniq_count, fill = Sampler)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0.5)) +
+  facet_grid(~Sample_length, scales ="free_x") +
+  scale_fill_manual(values = sampler_colours) +
+  labs( x = "Sample",
+        y = "Number of unique genera") 
+
+ggsave("../Images/graphs_marti_0624/uniq_shared/Unique_Genus_Sample_Length.svg",
+       plot = length_uniq , device = "svg", width = 10, height = 7)
 
 
-#Total species in each sample
+#Total species in each sample ------------
+
 numeric_col_presence_data <- marti_presence_data[, 3:ncol(marti_presence_data)]
-total <- data.frame(sample_ID = colnames(numeric_col_presence_data), 
-                            Total = colSums(numeric_col_presence_data))
+total <- data.frame(Sample_ID = colnames(numeric_col_presence_data), 
+                    total_count = colSums(numeric_col_presence_data))
 
-#Combining 
-taxa_counts <- inner_join(uniq, total, by = "sample_ID")
-colnames(taxa_counts)[c(5)] <-"total_count" #renaming col names
 
-#Shared 
+#Combining the total number onto big uniq dataframe
+taxa_counts <- inner_join(uniq, total, by = "Sample_ID")
+
+#This order is important for later binding steps!
+order_rows <- order(taxa_counts$Sample_ID) #Getting alphabetical order
+taxa_counts <- taxa_counts[order_rows, ] #rearranging by this order
+
+
+#Shared - Gettin a count for only the shared species (total includes the uniq)
 taxa_counts <- taxa_counts %>% 
-  mutate(shared_ge_count = total_count - uniq_ge_count)
+  mutate(shared_count = total_count - uniq_count)
 
 
-#Reshape data
+#Reshape data - duplicating each row, so there is a seperate row for the unique and shared count
 taxa_count_long <- taxa_counts %>%
   pivot_longer(
-    cols = c(uniq_ge_count, shared_ge_count),
-    names_to = "Number_ge",
+    cols = c(uniq_count, shared_count),
+    names_to = "Number",
     values_to = "Count"
   ) %>%
   mutate(
-    Number_ge = case_when(
-      Number_ge == "uniq_ge_count" ~ "Unique",
-      Number_ge == "shared_ge_count" ~ "Shared"
+    Number = case_when(
+      Number == "uniq_count" ~ "Unique",
+      Number == "shared_count" ~ "Shared"
     )
   )
 
 #Plot proportion of uniq & shared 
-all_uniq_prop_bar <- ggplot(taxa_count_long, aes(x = sample_ID, y = Count, fill = Number_ge)) +
-  geom_bar(stat = "identity", position = "fill") +
-  facet_grid(~Location, scales ="free_x") +
-  scale_fill_manual(values = sampler_colours) +
-  labs(x = "Sample",
-       y = "Percentage of Classified Genus") +
-  theme(legend.position = "right", axis.text.x = element_text(angle = 90, vjust = 0, hjust = 1))
-
-
-# Looking at uniq within a location ---------------------------------------
-#Church Farm 
-CF_samples <- marti_presence_data %>% 
-  select(1:2, starts_with("CF"))
-
-CF_u_ge <- CF_samples$Taxon[rowSums(CF_samples[, -c(1,2)]) == 1] 
-
-CF_uniq_ge <- #subset df to only contain uniq genus
-  CF_samples[marti_presence_data$Taxon %in% CF_u_ge, ]
-
-CF_uniq_ge_name <- 
-  melt(CF_uniq_ge, id.vars = c("Taxon", "Rank")) %>% # Melt the data to long
-  filter(value == 1) #Only keep present taxa
-
-CF_uniq_ge_name_num <- CF_uniq_ge_name %>% 
-  group_by(variable) %>% 
-  summarise(count = n()) 
-
-#NHM 
-NHM_samples <- marti_presence_data %>% 
-  select(1:2, starts_with("NHM"))
-
-NHM_u_ge <- NHM_samples$Taxon[rowSums(NHM_samples[, -c(1,2)]) == 1] 
-
-NHM_uniq_ge <- #subset df to only contain uniq genus
-  NHM_samples[marti_presence_data$Taxon %in% NHM_u_ge, ]
-
-NHM_uniq_ge_name <- 
-  melt(NHM_uniq_ge, id.vars = c("Taxon", "Rank")) %>% # Melt the data to long
-  filter(value == 1) #Only keep present taxa
-
-NHM_uniq_ge_name_num <- NHM_uniq_ge_name %>% 
-  group_by(variable) %>% 
-  summarise(count = n()) #no uniq geecies per sample
-
-#Combine
-Uniq_per_location <- rbind(CF_uniq_ge_name_num, NHM_uniq_ge_name_num)
-
-#Samples with 0 uniq species - need to check and change this with each analysis 
-missing_samples <- data.frame(
-  variable = c("CF_SASS_1","CF_SASS_2", "CF_SASS_3", "CF_SASS_4", "NHM_SASS_3"),
-  count = c("0", "0", "0", "0", "0"))
-
-Uniq_per_location <- rbind(Uniq_per_location, missing_samples)
-
-colnames(Uniq_per_location)[c(1,2)] <- c("sample_ID","uniq_ge_count") #renaming col names
-Uniq_per_location$uniq_ge_count <- as.numeric(Uniq_per_location$uniq_ge_count)
-Uniq_per_location$sample_ID <- as.character(Uniq_per_location$sample_ID)
-
-#Need to be in the same order before binding 
-order_rows <- order(Uniq_per_location$sample_ID) #Getting alphabetical order
-Uniq_per_location <- Uniq_per_location[order_rows, ] #rearranging by this order
-
-columns_to_add <- c("Sampler", "Location", "total_count")
-Uniq_per_location <- cbind(Uniq_per_location, taxa_counts[columns_to_add]) #adding cols of metadata 
-
-#Shared 
-Uniq_per_location <- Uniq_per_location %>% 
-  mutate(shared_ge_count = total_count - uniq_ge_count)
-
-#Reshape data
-Uniq_per_location_long <- Uniq_per_location %>%
-  pivot_longer(
-    cols = c(uniq_ge_count, shared_ge_count),
-    names_to = "Number_ge",
-    values_to = "Count"
-  ) %>%
-  mutate(
-    Number_ge = case_when(
-      Number_ge == "uniq_ge_count" ~ "Unique",
-      Number_ge == "shared_ge_count" ~ "Shared"
-    )
-  )
-
-#Plot proportion of uniq & shared geecies 
-ggplot(Uniq_per_location_long, aes(x = sample_ID, y = Count, fill = Number_ge)) +
-  geom_bar(stat = "identity", position = "fill") +
+all_uniq_prop_bar <- ggplot(taxa_count_long, aes(x = Sample_ID, y = Count, fill = Number)) +
+  geom_bar(stat = "identity", 
+          # position = "fill"
+           ) +
   facet_grid(~Location, scales ="free_x") +
   scale_fill_manual(values = sampler_colours) +
   labs(x = "Sample",
        y = "Percentage of Classified Genera") +
   theme(legend.position = "right", axis.text.x = element_text(angle = 90, vjust = 0, hjust = 1))
 
+ggsave("../Images/graphs_marti_0624/uniq_shared/Proportion_Unique_Genera_Location_count.svg",
+       plot = all_uniq_prop_bar , device = "svg", width = 10, height = 7)
+
+
+# Looking at uniq within a Location ---------------------------------------
+
+#Church Farm, need to recalculate uniq counts ignoring those in NHM data ----
+CF_samples <- marti_presence_data %>% 
+  select(1:2, starts_with("CF"))
+
+CF_u <- CF_samples$Taxon[rowSums(CF_samples[, -c(1,2)]) == 1] 
+
+CF_uniq <- #subset df to only contain uniq taxon
+  CF_samples[marti_presence_data$Taxon %in% CF_u, ]
+
+CF_uniq_name <- 
+  melt(CF_uniq, id.vars = c("Taxon", "Rank")) %>% # Melt the data to long
+  filter(value == 1) #Only keep present taxa
+
+CF_uniq_name_num <- CF_uniq_name %>% 
+  group_by(variable) %>% 
+  summarise(count = n()) 
+
+#NHM same as with CF ----
+NHM_samples <- marti_presence_data %>% 
+  select(1:2, starts_with("NHM"))
+
+NHM_u <- NHM_samples$Taxon[rowSums(NHM_samples[, -c(1,2)]) == 1] 
+
+NHM_uniq <- #subset df to only contain uniq taxon
+  NHM_samples[marti_presence_data$Taxon %in% NHM_u, ]
+
+NHM_uniq_name <- 
+  melt(NHM_uniq, id.vars = c("Taxon", "Rank")) %>% # Melt the data to long
+  filter(value == 1) #Only keep present taxa
+
+NHM_uniq_name_num <- NHM_uniq_name %>% 
+  group_by(variable) %>% 
+  summarise(count = n()) #no uniq species per sample
+
+#Combine
+Uniq_per_location <- rbind(CF_uniq_name_num, NHM_uniq_name_num)
+
+#Samples with 0 uniq species - need to check and change this with each analysis 
+missing_samples_2 <- data.frame(
+  variable = c("CF_Micro_2","CF_SASS_2","CF_SASS_4", "NHM_Cub_3","NHM_SASS_2","NHM_SASS_3","NHM_SASS_4"),
+  count = c("0", "0", "0", "0", "0", "0", "0"))
+
+Uniq_per_location <- rbind(Uniq_per_location, missing_samples_2)
+
+colnames(Uniq_per_location)[c(1,2)] <- c("Sample_ID","uniq_count") #renaming col names
+Uniq_per_location$uniq_count <- as.numeric(Uniq_per_location$uniq_count)
+Uniq_per_location$Sample_ID <- as.character(Uniq_per_location$Sample_ID)
+
+#Need to be in the same order before binding 
+order_rows <- order(Uniq_per_location$Sample_ID) #Getting alphabetical order
+Uniq_per_location <- Uniq_per_location[order_rows, ] #rearranging by this order
+
+#Add metadata 
+Uniq_per_location <- Uniq_per_location %>%
+  left_join(meta, by = "Sample_ID") 
+
+#Add total taxon count calculated earlier in the analysis
+Uniq_per_location <- inner_join(Uniq_per_location, total, by = "Sample_ID")
+
+#Shared 
+Uniq_per_location <- Uniq_per_location %>% 
+  mutate(shared_count = total_count - uniq_count)
+
+#Reshape data
+Uniq_per_location <- Uniq_per_location %>%
+  pivot_longer(
+    cols = c(uniq_count, shared_count),
+    names_to = "Number",
+    values_to = "Count"
+  ) %>%
+  mutate(
+    Number = case_when(
+      Number == "uniq_count" ~ "Unique",
+      Number == "shared_count" ~ "Shared"
+    )
+  )
+
+#Plot proportion of uniq & shared Taxa, by location ------
+prop_location <- ggplot(Uniq_per_location, aes(x = Sample_ID, y = Count, fill = Number)) +
+  geom_bar(stat = "identity",
+           #position = "fill"
+           ) +
+  facet_grid(~Location, scales ="free_x") +
+  scale_fill_manual(values = sampler_colours) +
+  labs(x = "Sample",
+       y = "Percentage of Classified Genera") +
+  theme(legend.position = "right", axis.text.x = element_text(angle = 90, vjust = 0, hjust = 1))
+
+ggsave("../Images/graphs_marti_0624/uniq_shared/Proportion_Unique_Genera_Location_Seperate_count.svg",
+       plot = prop_location , device = "svg", width = 10, height = 7)
+
 #Unique per Sampler ----------------------------------------------------
 #Bobcat
 Bobcat_samples <- marti_presence_data %>% 
   select(1:2, contains("Bobcat"))
 
-Bobcat_u_ge <- Bobcat_samples$Taxon[rowSums(Bobcat_samples[, -c(1,2)]) == 1] 
+Bobcat_u <- Bobcat_samples$Taxon[rowSums(Bobcat_samples[, -c(1,2)]) == 1] 
 
-Bobcat_uniq_ge <- #subset df to only contain uniq genus
-  Bobcat_samples[marti_presence_data$Taxon %in% Bobcat_u_ge, ]
+Bobcat_uniq <- #subset df to only contain uniq genus
+  Bobcat_samples[marti_presence_data$Taxon %in% Bobcat_u, ]
 
-Bobcat_uniq_ge_name <- 
-  melt(Bobcat_uniq_ge, id.vars = c("Taxon", "Rank")) %>% # Melt the data to long
+Bobcat_uniq_name <- 
+  melt(Bobcat_uniq, id.vars = c("Taxon", "Rank")) %>% # Melt the data to long
   filter(value == 1) #Only keep present taxa
 
-Bobcat_uniq_ge_name_num <- Bobcat_uniq_ge_name %>% 
+Bobcat_uniq_name_num <- Bobcat_uniq_name %>% 
   group_by(variable) %>% 
   summarise(count = n()) #no uniq genus per sample
 
@@ -216,16 +276,16 @@ Bobcat_uniq_ge_name_num <- Bobcat_uniq_ge_name %>%
 Compact_samples <- marti_presence_data %>% 
   select(1:2, contains("Compact"))
 
-Compact_u_ge <- Compact_samples$Taxon[rowSums(Compact_samples[, -c(1,2)]) == 1] 
+Compact_u <- Compact_samples$Taxon[rowSums(Compact_samples[, -c(1,2)]) == 1] 
 
-Compact_uniq_ge <- #subset df to only contain uniq genus
-  Compact_samples[marti_presence_data$Taxon %in% Compact_u_ge, ]
+Compact_uniq <- #subset df to only contain uniq genus
+  Compact_samples[marti_presence_data$Taxon %in% Compact_u, ]
 
-Compact_uniq_ge_name <- 
-  melt(Compact_uniq_ge, id.vars = c("Taxon", "Rank")) %>% # Melt the data to long
+Compact_uniq_name <- 
+  melt(Compact_uniq, id.vars = c("Taxon", "Rank")) %>% # Melt the data to long
   filter(value == 1) #Only keep present taxa
 
-Compact_uniq_ge_name_num <- Compact_uniq_ge_name %>% 
+Compact_uniq_name_num <- Compact_uniq_name %>% 
   group_by(variable) %>% 
   summarise(count = n()) #no uniq genus per sample
 
@@ -233,16 +293,16 @@ Compact_uniq_ge_name_num <- Compact_uniq_ge_name %>%
 Cub_samples <- marti_presence_data %>% 
   select(1:2, contains("Cub"))
 
-Cub_u_ge <- Cub_samples$Taxon[rowSums(Cub_samples[, -c(1,2)]) == 1] 
+Cub_u <- Cub_samples$Taxon[rowSums(Cub_samples[, -c(1,2)]) == 1] 
 
-Cub_uniq_ge <- #subset df to only contain uniq genus
-  Cub_samples[marti_presence_data$Taxon %in% Cub_u_ge, ]
+Cub_uniq <- #subset df to only contain uniq genus
+  Cub_samples[marti_presence_data$Taxon %in% Cub_u, ]
 
-Cub_uniq_ge_name <- 
-  melt(Cub_uniq_ge, id.vars = c("Taxon", "Rank")) %>% # Melt the data to long
+Cub_uniq_name <- 
+  melt(Cub_uniq, id.vars = c("Taxon", "Rank")) %>% # Melt the data to long
   filter(value == 1) #Only keep present taxa
 
-Cub_uniq_ge_name_num <- Cub_uniq_ge_name %>% 
+Cub_uniq_name_num <- Cub_uniq_name %>% 
   group_by(variable) %>% 
   summarise(count = n()) #no uniq genus per sample
 
@@ -250,16 +310,16 @@ Cub_uniq_ge_name_num <- Cub_uniq_ge_name %>%
 Micro_samples <- marti_presence_data %>% 
   select(1:2, contains("Micro"))
 
-Micro_u_ge <- Micro_samples$Taxon[rowSums(Micro_samples[, -c(1,2)]) == 1] 
+Micro_u <- Micro_samples$Taxon[rowSums(Micro_samples[, -c(1,2)]) == 1] 
 
-Micro_uniq_ge <- #subset df to only contain uniq genus
-  Micro_samples[marti_presence_data$Taxon %in% Micro_u_ge, ]
+Micro_uniq <- #subset df to only contain uniq genus
+  Micro_samples[marti_presence_data$Taxon %in% Micro_u, ]
 
-Micro_uniq_ge_name <- 
-  melt(Micro_uniq_ge, id.vars = c("Taxon", "Rank")) %>% # Melt the data to long
+Micro_uniq_name <- 
+  melt(Micro_uniq, id.vars = c("Taxon", "Rank")) %>% # Melt the data to long
   filter(value == 1) #Only keep present taxa
 
-Micro_uniq_ge_name_num <- Micro_uniq_ge_name %>% 
+Micro_uniq_name_num <- Micro_uniq_name %>% 
   group_by(variable) %>% 
   summarise(count = n()) #no uniq genus per sample
 
@@ -267,37 +327,37 @@ Micro_uniq_ge_name_num <- Micro_uniq_ge_name %>%
 Sass_samples <- marti_presence_data %>% 
   select(1:2, contains("Sass"))
 
-Sass_u_ge <- Sass_samples$Taxon[rowSums(Sass_samples[, -c(1,2)]) == 1] 
+Sass_u <- Sass_samples$Taxon[rowSums(Sass_samples[, -c(1,2)]) == 1] 
 
-Sass_uniq_ge <- #subset df to only contain uniq genus
-  Sass_samples[marti_presence_data$Taxon %in% Sass_u_ge, ]
+Sass_uniq <- #subset df to only contain uniq genus
+  Sass_samples[marti_presence_data$Taxon %in% Sass_u, ]
 
-Sass_uniq_ge_name <- 
-  melt(Sass_uniq_ge, id.vars = c("Taxon", "Rank")) %>% # Melt the data to long
+Sass_uniq_name <- 
+  melt(Sass_uniq, id.vars = c("Taxon", "Rank")) %>% # Melt the data to long
   filter(value == 1) #Only keep present taxa
 
-Sass_uniq_ge_name_num <- Sass_uniq_ge_name %>% 
+Sass_uniq_name_num <- Sass_uniq_name %>% 
   group_by(variable) %>% 
   summarise(count = n()) #no uniq genus per sample
 
 #Combine
-Uniq_per_sampler <- rbind(Bobcat_uniq_ge_name_num, Compact_uniq_ge_name_num, 
-                          Cub_uniq_ge_name_num, Micro_uniq_ge_name_num, 
-                          Sass_uniq_ge_name_num)
+Uniq_per_sampler <- rbind(Bobcat_uniq_name_num, Compact_uniq_name_num, 
+                          Cub_uniq_name_num, Micro_uniq_name_num, 
+                          Sass_uniq_name_num)
 
 #Samples with 0 uniq  
-#missing_samp <- data.frame(
-#  variable = c("CF_SASS_4"),
-#  count = c("0"))
+missing_samples_3 <- data.frame(
+ variable = c("NHM_SASS_2", "CF_Micro_2"),
+ count = c("0", "0"))
 
-#Uniq_per_sampler <- rbind(Uniq_per_sampler, missing_samp)
+Uniq_per_sampler <- rbind(Uniq_per_sampler, missing_samples_3)
 
-colnames(Uniq_per_sampler)[c(1,2)] <- c("sample_ID","uniq_ge_count") #renaming col names
-Uniq_per_sampler$uniq_ge_count <- as.numeric(Uniq_per_sampler$uniq_ge_count)
-Uniq_per_sampler$sample_ID <- as.character(Uniq_per_sampler$sample_ID)
+colnames(Uniq_per_sampler)[c(1,2)] <- c("Sample_ID","uniq_count") #renaming col names
+Uniq_per_sampler$uniq_count <- as.numeric(Uniq_per_sampler$uniq_count)
+Uniq_per_sampler$Sample_ID <- as.character(Uniq_per_sampler$Sample_ID)
 
 #Need to be in the same order before binding 
-order_rows <- order(Uniq_per_sampler$sample_ID) #Getting alphabetical order
+order_rows <- order(Uniq_per_sampler$Sample_ID) #Getting alphabetical order
 Uniq_per_sampler <- Uniq_per_sampler[order_rows, ] #rearranging by this order
 
 columns_to_add <- c("Sampler", "Location", "total_count")
@@ -305,34 +365,41 @@ Uniq_per_sampler <- cbind(Uniq_per_sampler, taxa_counts[columns_to_add]) #adding
 
 #Shared 
 Uniq_per_sampler <- Uniq_per_sampler %>% 
-  mutate(shared_ge_count = total_count - uniq_ge_count)
+  mutate(shared_count = total_count - uniq_count)
 
 #Reshape data
-Uniq_per_sampler_long <- Uniq_per_sampler %>%
+Uniq_per_sampler <- Uniq_per_sampler %>%
   pivot_longer(
-    cols = c(uniq_ge_count, shared_ge_count),
-    names_to = "Number_ge",
+    cols = c(uniq_count, shared_count),
+    names_to = "Number",
     values_to = "Count"
   ) %>%
   mutate(
-    Number_ge = case_when(
-      Number_ge == "uniq_ge_count" ~ "Unique",
-      Number_ge == "shared_ge_count" ~ "Shared"
+    Number = case_when(
+      Number == "uniq_count" ~ "Unique",
+      Number == "shared_count" ~ "Shared"
     )
   )
 
 #Plot proportion of uniq & shared species 
-sampler_uniq_prop_bar <- ggplot(Uniq_per_sampler_long, aes(x = sample_ID, y = Count, fill = Number_ge)) +
-  geom_bar(stat = "identity", position = "fill") +
+sampler_uniq_prop_bar <- ggplot(Uniq_per_sampler, aes(x = Sample_ID, y = Count, fill = Number)) +
+  geom_bar(stat = "identity",
+           #position = "fill"
+           ) +
   facet_grid(~Sampler, scales ="free_x") +
   scale_fill_manual(values = sampler_colours) +
   labs(x = "Sample",
        y = "Percentage of Classified Genera") +
   theme(legend.position = "right", axis.text.x = element_text(angle = 90, vjust = 0, hjust = 1))
 
+ggsave("../Images/graphs_marti_0624/uniq_shared/Proportion_Unique_Genera_Sampler_Seperate_count.svg",
+       plot = sampler_uniq_prop_bar , device = "svg", width = 10, height = 7)
 
 
+##
 #Older work ----------
+##
+
 #MARTi data looking for unique samples in species data
 marti_old <- read.csv("old_parameters_MARTI_samp_comp_read_data/taxa_assignments_lca_0.1_species_assi_Samp_Comp.csv")
 

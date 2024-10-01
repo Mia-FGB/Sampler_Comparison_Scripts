@@ -8,7 +8,7 @@ library(forcats)
 library(tidyverse)
 
 #read in data
-taxarank_data <- read.csv("PHIbase_read_data/sampler_comparison_PHIbase_alldetails.csv")
+taxarank_data <- read.csv("../PHIbase_read_data/sampler_comparison_PHIbase_alldetails.csv")
 
 
 #Need to normalise the reads for each location, e.g. hits per million reads
