@@ -17,9 +17,15 @@ library(stringr)
 library(fantaxtic)
 library(data.table)
 library(tidyr)
+library(forcats)
+library(Cairo)
 
-# Set plotting theme
-theme_set(theme_bw())
+# Theme for plots ------
+custom_theme <- theme_minimal(base_size = 12) +
+  theme(
+    axis.line = element_line(color = "black", linewidth = 0.3),
+    panel.grid.minor = element_blank(),
+  )
 
 #Loading in data -----------------------------------------------------------------------
 
@@ -29,13 +35,13 @@ theme_set(theme_bw())
 
 #otu <- read.csv("../Older MARTi Runs/MARTI_samp_comp_updated_parameters_0823/marti_output_august23_assigned.csv") #August 2023
 
-otu <- read.csv("../samp_comp_0624_marti/samp_comp_assigned_otu_0624.csv") #MARTi run from June 2024
+otu <- read.csv("samp_comp_0624_marti/samp_comp_assigned_otu_0624.csv") #MARTi run from June 2024
 rownames(otu) <- otu[,1] #Making the rownames the NCBI ID
 otu <- otu[,-1]          #remove 1st first col
 
 #taxa table - need to remake this
 #taxa <- read.csv("../Older MARTi Runs/MARTI_samp_comp_updated_parameters_0823/Taxonomy/taxa_lineage_sep_na.csv") #August 2023
-taxa <- read.csv("../samp_comp_0624_marti/samp_comp_assigned_0624_taxaID_lineage.csv")
+taxa <- read.csv("samp_comp_0624_marti/samp_comp_assigned_0624_taxaID_lineage.csv")
 
 taxa <- taxa[-1, ] #Remove the first row
 
@@ -45,8 +51,8 @@ taxa<- taxa %>%
 rownames(taxa) <- rownames(otu) #same rownames as the otu table
 taxa <- taxa[,-1]               
 
-#sample meta data (this hasn't changed)
-meta <- read.csv("../old_parameters_MARTI_samp_comp_read_data/Phyloseq_data/Sample_table.csv")
+#sample meta data (this hasn't changed between 2023 and 2024 MARTi parameters)
+meta <- read.csv("old_parameters_MARTI_samp_comp_read_data/Phyloseq_data/Sample_table.csv")
 
 rownames(meta) <- meta[,1]                              #1st col is rownames
 meta$NumReads <- as.numeric(gsub(",","",meta$NumReads)) #Remove commas from the NumRead col
@@ -71,7 +77,7 @@ phylo_object<- phyloseq(phylo_OTU, phylo_TAX, phylo_samples) #Bring them togethe
 sample_sum_df <- data.frame(sum = sample_sums(phylo_object)) #sample_sums = no assigned reads per sample
 
 ggplot(sample_sum_df, aes(x = sum)) + 
-  geom_histogram(color = "black", fill = "indianred", binwidth = 10000) +
+  geom_histogram(color = "black", fill = "indianred", binwidth = 15000) +
   ggtitle("Distribution of sample sequencing depth") + 
   xlab("Read counts") + ylab("Count") +
   theme(axis.title.y = element_blank())
@@ -89,20 +95,67 @@ samp_phylum <- phylo_object %>%
   filter(Abundance > 0.02) %>%                         # Filter out low abundance taxa <2%
   arrange(phylum)                                      # Sort data frame alphabetically by phylum
 
-# Plot 
-phylum_colours <- c('#9e0142', '#d53e4f', '#f46d43', '#fdae61', '#fee08b', '#e6f598', '#abdda4', '#66c2a5', 
+# Plot ------------
+
+# Setting up colour scheme 
+phylum_colours <- c('#9e0142', '#d53e4f', '#f46d43', '#fdae61', '#fee08b', '#e6f598', '#abdda4', '#66c2a5',
                     '#3288bd', '#5e4fa2', '#A672A7', '#b5b3bd')
 
+location_labels <- c(
+  "NHM" = "Natural History Museum",
+  "Cfarm" = "Church Farm"
+)
+
+
+duration_labels <- c(
+  "25" = "25 minutes",
+  "50" = "50 minutes"
+)
+
+sampler_levels <- c(
+  "Compact",
+  "Micro",
+  "Bobcat",
+  "Cub",
+  "Sass"
+)
+
+# Reorder phylum by total abundance, but keep "Unassigned" last
+samp_phylum$phylum <- samp_phylum %>%
+  mutate(phylum = fct_reorder(phylum, Abundance, .fun = sum)) %>%
+  mutate(phylum = fct_relevel(phylum, "Unassigned", after = Inf)) %>%
+  pull(phylum)
+
+samp_phylum$Sampler <- factor(samp_phylum$Sampler, levels = sampler_levels)
+
+
+# Phylum level plot
 phylum_stacked_bar <- ggplot(samp_phylum, aes(x = Sampler, y = Abundance, fill = phylum)) + 
-  facet_grid(Location~.) +
+  # facet_grid(Location~., labeller = labeller(Location = location_labels)) +
+  facet_grid(rows = vars(Location), cols = vars(Sample_length), 
+             labeller = labeller(
+               Location = location_labels,
+               Sample_length = duration_labels
+             )) +
   geom_bar(stat = "identity") +
-  scale_fill_manual(values = phylum_colours) +
+  scale_fill_manual(name = "Phylum", values = phylum_colours) +
   theme(axis.title.x = element_blank()) +   # Remove x axis title
   ylab("Relative Abundance (Phyla > 2%) \n") +
-  ggtitle("Phylum Composition of Different Air Samplers by Sampling Site") 
+  scale_x_discrete(labels = c(
+    "Compact" = "Coriolis\nCompact",
+    "Micro" = "Coriolis\nMicro",
+    "Bobcat" = "InnovaPrep\nBobcat",
+    "Cub" = "InnovaPrep\nCub",
+    "Sass" = "SASS\n3100"
+  )) + 
+  custom_theme 
 
-ggsave("../Images/graphs_marti_0624/taxonomic_abundance/Phylum_Stacked_Bar.png",
-       plot = phylum_stacked_bar , device = "png", width = 10, height = 8)
+  # + ggtitle("Phylum Composition of Different Air Samplers by Sampling Site") 
+
+phylum_stacked_bar
+
+ggsave("Images/graphs_marti_0624/taxonomic_abundance/Phylum_Stacked_Bar.png",
+       plot = phylum_stacked_bar, width = 12, height = 8, dpi = 600)
 
 
 
@@ -112,9 +165,6 @@ df_phylo <- psmelt(phylo_object)
 tot_sequences <-  meta %>% 
   group_by(Sampler, Location, Sample_length) %>% 
   summarise(avg_no_reads = mean(NumReads), avg_DNA_yield = mean(DNA_yield))
-
-# Taxonomy proportion
-
 
 #Calculating reads per taxonomic group
 tot_reads <-  meta %>% 
@@ -180,9 +230,9 @@ eukaryote_reads <- Reduce(function(x, y) merge(x, y, all=TRUE), eukaryote_list, 
 #write.csv(kingdom_reads, "MARTI_samp_comp_updated_parameters_0823/kingdom_proportions_3008.csv")  
 #write.csv(eukaryote_reads, "MARTI_samp_comp_updated_parameters_0823/eukaryoteproportions_3008.csv")  
 
-write.csv(all_reads, "../samp_comp_0624_marti/taxa_proportions_0624.csv")  
-write.csv(kingdom_reads, "../samp_comp_0624_marti/kingdom_proportions_0624.csv")  
-write.csv(eukaryote_reads, "../samp_comp_0624_marti/eukaryoteproportions_0624.csv")  
+# write.csv(all_reads, "../samp_comp_0624_marti/taxa_proportions_0624.csv")  
+# write.csv(kingdom_reads, "../samp_comp_0624_marti/kingdom_proportions_0624.csv")  
+# write.csv(eukaryote_reads, "../samp_comp_0624_marti/eukaryoteproportions_0624.csv")  
 
 
 #Plot Eukaryote phylum proportions----------------------------------------------
@@ -190,6 +240,7 @@ write.csv(eukaryote_reads, "../samp_comp_0624_marti/eukaryoteproportions_0624.cs
 phylo_eukaryote = subset_taxa(phylo_object, kingdom=="Eukaryota")
 
 #Relative abundance graphs ----------------------------------------------
+#Just animal/fungi/plant/algae
 
 samp_phylum_euk <- phylo_eukaryote %>% 
   tax_glom(taxrank = "phylum") %>%   
@@ -198,30 +249,73 @@ samp_phylum_euk <- phylo_eukaryote %>%
   #Adding new column to look at higher level
   mutate(Taxa = case_when(
     phylum == "Streptophyta" ~ "Plant",
+    phylum == "Unassigned" ~ "Unassigned",
     phylum %in% algae_phyla ~ "Algae",
     phylum %in% animal_phyla ~ "Animal",
     phylum %in% fungi_phyla ~ "Fungi"))
 
+taxa_colours <-  c( '#3288bd', '#d53e4f','#fee08b', '#abdda4', '#b5b3bd')
 
+samp_phylum_euk$Sampler <- factor(samp_phylum_euk$Sampler, levels = sampler_levels)
+
+
+# To also facet by time 
+eukaryote_plot <- ggplot(samp_phylum_euk, aes(x = Sampler, y = Abundance, fill = Taxa)) + 
+  facet_grid(rows = vars(Location), cols = vars(Sample_length), 
+             labeller = labeller(
+               Location = location_labels,
+               Sample_length = duration_labels
+             )) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = taxa_colours) +
+  theme(axis.title.x = element_blank()) +
+  ylab("Relative Abundance") +
+  xlab("Sampler") +
+  custom_theme +  
+  scale_x_discrete(labels = c(
+    "Compact" = "Coriolis\nCompact",
+    "Micro" = "Coriolis\nMicro",
+    "Bobcat" = "InnovaPrep\nBobcat",
+    "Cub" = "InnovaPrep\nCub",
+    "Sass" = "SASS\n3100"
+  )) 
+
+
+ggsave("Images/graphs_marti_0624/taxonomic_abundance/Eukaryote_Stacked_Bar.png",
+       plot = eukaryote_plot, width = 12, height = 8, dpi = 600)
+
+# To group time and sampler
 samp_phylum_euk$Sampler_Length <- paste(samp_phylum_euk$Sampler,
                                         samp_phylum_euk$Sample_length)
 
-taxa_colours <-  c( "#1E88E5", "#D81B60","#FFC107", "#0A794D")
-
-#Just animal/fungi/plant/algae
 eukaryote_taxa_graph <-  ggplot(samp_phylum_euk, aes(x = Sampler_Length, y = Abundance, fill = Taxa)) + 
-  facet_grid(rows = vars(Location)) +
+  facet_grid(rows = vars(Location), labeller = labeller(Location = location_labels)) +
   geom_bar(stat = "identity") +
   scale_fill_manual(values = taxa_colours) +
   theme(axis.title.x = element_blank()) + # Remove x axis title
   ylab("Relative Abundance") +
-  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5)) +
-  ggtitle("Composition of Eukaryote reads showing different Air Samplers by Sampling Site") 
+  xlab("Sampler and Duration") +
+  scale_x_discrete(labels = c(
+    "Compact 25" = "Coriolis\nCompact\n25",
+    "Micro 25" = "Coriolis\nMicro\n25",
+    "Bobcat 25" = "InnovaPrep\nBobcat\n25",
+    "Cub 25" = "InnovaPrep\nCub\n25",
+    "Sass 25" = "SASS\n3100\n25",
+    "Compact 50" = "Coriolis\nCompact\n50",
+    "Micro 50" = "Coriolis\nMicro\n50",
+    "Bobcat 50" = "InnovaPrep\nBobcat\n50",
+    "Cub 50" = "InnovaPrep\nCub\n50",
+    "Sass 50" = "SASS\n3100\n50"
+  )) + 
+  custom_theme 
 
-ggsave("../Images/graphs_marti_0624/taxonomic_abundance/Eukaryote_Stacked_Bar.svg",
-       plot = eukaryote_taxa_graph , device = "svg", width = 10, height = 8)
+eukaryote_taxa_graph
 
-#All phyla
+ggsave("/Images/graphs_marti_0624/taxonomic_abundance/Eukaryote_Stacked_Bar.png",
+       plot = eukaryote_taxa_graph, width = 6, height = 8, dpi = 600)
+
+
+#All phyla in balck and white, prefer the graph from earlier in the code
 eukaryote_phylum_graph <- ggplot(samp_phylum_euk, aes(x = Sampler_Length, y = Abundance, fill = phylum)) + 
   facet_grid(Location~.) +
   geom_bar(stat = "identity") +
@@ -293,7 +387,8 @@ eukaryote_norm_taxa_graph <-  ggplot(samp_phylum_euk_norm, aes(x = Sampler_Lengt
   theme(axis.title.x = element_blank()) + # Remove x axis title
   ylab("Reads per 100,000") +
   theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5)) +
-  ggtitle("Composition of Eukaryote reads showing different Air Samplers by Sampling Site") 
+  custom_theme
+  # ggtitle("Composition of Eukaryote reads showing different Air Samplers by Sampling Site") 
 
 ggsave("../Images/graphs_marti_0624/taxonomic_abundance/Eukaryote_Count_Stacked_Bar.svg",
        plot = eukaryote_norm_taxa_graph , device = "svg", width = 10, height = 8)
@@ -362,3 +457,23 @@ write.csv(top10_phylum, "MARTI_samp_comp_updated_parameters_0823/top10_phylum_25
 ggplot(top10_species, aes(x = Sample_ID, y = abundance, fill = Species)) +
          geom_col(color = "black") +
   scale_y_continuous(breaks = seq(0, 1, 0.1)) + ylab("Average relative abundance") 
+
+# Pulling out some stats -------
+
+# Define phyla of interest
+target_phyla <- c("Streptophyta", "Arthropoda", "Chordata")
+
+# Summarise average relative abundance
+summary_table <- samp_phylum_euk %>%
+  filter(phylum %in% target_phyla) %>%
+  group_by(Location, Sampler, Sample_length, phylum) %>%
+  summarise(
+    mean_abundance = mean(Abundance, na.rm = TRUE),
+    sd_abundance = sd(Abundance, na.rm = TRUE),
+    n = n(),
+    .groups = "drop"
+  )
+
+summary_table <- summary_table %>%
+  mutate(across(contains("abundance"), ~ round(. * 100, 1))) %>%
+  arrange(desc(mean_abundance))
