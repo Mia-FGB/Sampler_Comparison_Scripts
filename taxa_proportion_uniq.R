@@ -4,6 +4,7 @@ library(ggplot2)
 library(tidyr)
 library(reshape2)
 library(scales)
+library(RColorBrewer)
 
 
 #sample meta data (this hasn't changed)
@@ -15,128 +16,27 @@ meta <- read.csv("old_parameters_MARTI_samp_comp_read_data/Phyloseq_data/Sample_
 #marti_sum <-read.csv("../Older MARTi Runs/MARTI_samp_comp_updated_parameters_0823/marti_output_august23_summarised_taxaname.csv")
 
 #New MARTi analysis 2024
-marti_sum <- read.csv("samp_comp_0624_marti/samp_comp_summed_0624.csv")
+# marti_sum <- read.csv("samp_comp_0624_marti/samp_comp_summed_0624.csv")
 
-extract_rank_df <- function(data, rank) {
-  data %>%
-    filter(Rank == rank) %>%
-    select(-NCBI_ID)
+# Same MARTi data but exported June 2025 
+# These are all summed counts 
+marti <- read.delim("samp_comp_0624_marti/marti_assignments_lca_0.1_all_levels_2025-JUN-18_9-27-47.tsv")
+
+# Clean up column headers
+n_cols <- ncol(marti)
+
+# Clean only from column 4 onwards
+if (n_cols > 3) {
+  new_colnames <- colnames(marti)
+  new_colnames[4:n_cols] <- sub("\\.\\.samp_comp.*", "", new_colnames[4:n_cols])
+  colnames(marti) <- new_colnames
 }
 
-marti_species <- extract_rank_df(marti_sum, "species")
-marti_genus   <- extract_rank_df(marti_sum, "genus")
-marti_phylum  <- extract_rank_df(marti_sum, "phylum")
-
-# Data wrangling --------------
-# Option to do diff taxonomic levels 
-
-make_presence_absence <- function(df) {
-  df[, -c(1,2)] <- ifelse(df[, -c(1,2)] > 0, 1, 0)
-  return(df)
-}
-
-marti_presence_species <- make_presence_absence(marti_species)
-marti_presence_genus   <- make_presence_absence(marti_genus)
-marti_presence_phylum  <- make_presence_absence(marti_phylum)
-
-#Unique taxa - change this depending on taxonomic level of interest
-marti_presence_data <- marti_presence_species
-
-# To treat samples as individuals -------------
-# Step 1: Identify unique species (present in only one sample)
-unique_taxa <- marti_presence_data$Taxon[
-  rowSums(marti_presence_data[, -c(1,2)]) == 1
-]
-
-# Step 2: Filter data to only those unique taxa
-marti_unique <- marti_presence_data %>%
-  filter(Taxon %in% unique_taxa)
-
-# Step 3: Melt to long format and filter to present taxa
-unique_long <- marti_unique %>%
-  melt(id.vars = c("Taxon", "Rank")) %>%
-  filter(value == 1)
-
-# Step 4: Count unique species per sample
-uniq_counts <- unique_long %>%
-  group_by(variable) %>%
-  summarise(uniq_count = n(), .groups = "drop") 
-
-# rename variable column, was behaving weird so have this workaround
-uniq_counts$Sample_ID <- as.character(uniq_counts$variable)
-uniq_counts <- uniq_counts %>%
-  select(Sample_ID, uniq_count)
-
-# Get full list of samples from your metadata
-all_samples <- unique(meta$Sample_ID)
-
-# Identify missing samples (not in uniq_counts)
-missing_samples_df <- data.frame(
-  Sample_ID = setdiff(all_samples, uniq_counts$Sample_ID),
-  uniq_count = 0
-)
-
-# Combine counts with missing = 0 and join with metadata
-uniq <- bind_rows(uniq_counts, missing_samples_df) %>%
-  left_join(meta, by = "Sample_ID")
-
-# Group by sampler first ------------
-# Updated code to group by sampler then find unique June 2025
-
-# Step 1: Add sampler identity
-meta_info <- meta %>% select(Sample_ID, Sampler)
-presence_with_sampler <- marti_presence_data %>%
-  pivot_longer(-c(Taxon, Rank), names_to = "Sample_ID", values_to = "presence") %>%
-  left_join(meta_info, by = "Sample_ID")
-
-# Step 2: Summarise presence by sampler (1 if found in any of that sampler's samples)
-sampler_presence <- presence_with_sampler %>%
-  group_by(Taxon, Sampler) %>%
-  summarise(present = as.integer(any(presence == 1)), .groups = "drop") %>%
-  pivot_wider(names_from = Sampler, values_from = present, values_fill = 0)
-
-# Step 3: Identify taxa unique to one sampler
-sampler_presence$uniqueness <- rowSums(sampler_presence[ , -1]) == 1
-unique_taxa <- sampler_presence %>%
-  filter(uniqueness == TRUE)
-
-# Step 4: Count unique taxa per sampler
-unique_counts <- unique_taxa %>%
-  pivot_longer(-c(Taxon, uniqueness), names_to = "Sampler", values_to = "presence") %>%
-  filter(presence == 1) %>%
-  group_by(Sampler) %>%
-  summarise(n_unique_taxa = n(), .groups = "drop")
-
-#Shared taxa per sampler ----
-shared_taxa_all <- sampler_presence %>%
-  filter(uniqueness == FALSE)
-
-# Unique and shared taxa counts -----
-long_taxa <- sampler_presence %>%
-  pivot_longer(cols = -c(Taxon, uniqueness), names_to = "Sampler", values_to = "Present") %>%
-  filter(Present == 1)  %>%
-  mutate(Type = ifelse(uniqueness, "Unique", "Shared"))
-
-taxa_counts <- long_taxa %>%
-  group_by(Sampler, Type) %>%
-  summarise(n_taxa = n(), .groups = "drop")
-
-# Total species per sampler
-species_per_sampler <- presence_with_sampler %>%
-  filter(presence == 1) %>%
-  group_by(Sampler) %>%
-  summarise(n_unique_species = n_distinct(Taxon), .groups = "drop")
-
-
-#Plotting------------------------
-
-#Plot aesthetics 
-# sampler_colours <- c('#BBCC33', '#77AADD', '#EE8866', '#EEDD88',  '#99DDFF')
-
+# Plot aesthetics ---------
 sampler_colours <- setNames(brewer.pal(5, "Set2"), 
                             c("Bobcat", "Compact", 
-                                "Micro", "Cub", 
-                                "Sass"))
+                              "Micro", "Cub", 
+                              "Sass"))
 # Theme for plots ------
 custom_theme <- theme_minimal(base_size = 12) +
   theme(
@@ -163,6 +63,210 @@ sampler_levels <- c(
   "Sass"
 )
 
+
+# Function to extract one taxonomic level ----------
+extract_rank_df <- function(data, rank) {
+  data %>%
+    filter(NCBI.Rank == rank) %>%
+    select(-NCBI.ID)
+}
+
+# Apply function 
+marti_species <- extract_rank_df(marti, "species")
+marti_genus   <- extract_rank_df(marti, "genus")
+marti_phylum  <- extract_rank_df(marti, "phylum")
+
+# Data wrangling --------------
+# Option to do diff taxonomic levels 
+
+# Function to vreate just presence absence matrix
+make_presence_absence <- function(df) {
+  df[, -c(1,2)] <- ifelse(df[, -c(1,2)] > 0, 1, 0)
+  return(df)
+}
+
+marti_presence_species <- make_presence_absence(marti_species)
+marti_presence_genus   <- make_presence_absence(marti_genus)
+marti_presence_phylum  <- make_presence_absence(marti_phylum)
+
+
+# Taxonomic richness ------------------
+
+# How many different taxon found in each sample
+# Function to calculate taxon richness per sample
+calculate_taxon_richness <- function(presence_matrix, taxon_level = "Taxon") {
+  counts <- colSums(presence_matrix != 0)
+  return(data.frame(Sample = names(counts),
+                    Richness = counts,
+                    Taxon_Level = taxon_level))
+}
+
+# Get richness for each level
+species_summary <- calculate_taxon_richness(marti_presence_species, "Species")
+genus_summary   <- calculate_taxon_richness(marti_presence_genus, "Genus")
+phylum_summary  <- calculate_taxon_richness(marti_presence_phylum, "Phylum")
+
+# Remove the uneeded rows
+unwanted <- c("Name", "NCBI.Rank")
+
+species_summary <- subset(species_summary, !(Sample %in% unwanted))
+genus_summary   <- subset(genus_summary,   !(Sample %in% unwanted))
+phylum_summary  <- subset(phylum_summary,  !(Sample %in% unwanted))
+
+# Combine all levels
+richness_combined <- rbind(species_summary, genus_summary, phylum_summary)
+
+# Merge on the metadata
+richness_data <- merge(richness_combined, meta, by.x = "Sample", by.y = "Sample_ID", all.x = TRUE)
+
+
+ggplot(richness_data, aes(x = Sampler, y = Richness, fill = Taxon_Level)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~ Location) +
+  theme_minimal()
+
+
+#Plot taxonomic richness -----
+# Get mean to plot 
+richness_data_avg <- richness_data %>%
+  group_by(Location, Sample_length, Sampler, Taxon_Level) %>%
+  summarise(
+    mean_richness = mean(Richness),
+    richness_se = sd(Richness) / sqrt(n()),
+    .groups = "drop"
+  )
+
+# Reorder Taxon_Level
+richness_data_avg$Taxon_Level <- factor(richness_data_avg$Taxon_Level,
+                                        levels = c("Species", "Genus", "Phylum"))
+# Sampler order to match the other plots
+richness_data_avg$Sampler <- factor(richness_data_avg$Sampler, levels = sampler_levels)
+
+taxon_colours <- c('#9e0142', '#fdae61', '#3288bd')
+
+rich_plot <- ggplot(richness_data_avg, aes(x = Sampler, y = mean_richness,
+                              fill = Taxon_Level)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9)) +
+  geom_errorbar(aes(ymin = mean_richness - richness_se,
+                    ymax = mean_richness + richness_se),
+                position = position_dodge(width = 0.9),
+                width = 0.2, colour = "black") +
+  facet_grid(rows = vars(Location), cols = vars(Sample_length),
+             labeller = labeller(
+               Location = location_labels,
+               Sample_length = duration_labels
+             )) +
+  scale_fill_manual(values = taxon_colours) +
+  labs(x = "Sampler", y = "Mean taxonomic richness ± SE",
+       fill = "Taxonomic level") +
+  scale_x_discrete(labels = c(
+    "Compact" = "Coriolis\nCompact", "Micro" = "Coriolis\nMicro",
+    "Bobcat" = "InnovaPrep\nBobcat", "Cub" = "InnovaPrep\nCub",
+    "Sass" = "SASS\n3100" )) +
+  custom_theme
+
+ggsave("Images/graphs_marti_0624/uniq_shared/taxonomic_richness.pdf",
+       plot = rich_plot, width = 12, height = 8)
+
+
+# Unique species ------------------------------
+#Unique taxa - change this depending on taxonomic level of interest
+marti_presence_data <- marti_presence_species
+
+# To treat samples as individuals -------------
+# Step 1: Identify unique species (present in only one sample)
+unique_taxa <- marti_presence_data$Name[
+  rowSums(marti_presence_data[, -c(1,2)]) == 1
+]
+
+# Step 2: Filter data to only those unique taxa
+marti_unique <- marti_presence_data %>%
+  filter(Name %in% unique_taxa)
+
+# Step 3: Melt to long format and filter to present taxa
+unique_long <- marti_unique %>%
+  melt(id.vars = c("Name", "NCBI.Rank")) %>%
+  filter(value == 1)
+
+# Step 4: Count unique species per sample
+uniq_counts <- unique_long %>%
+  group_by(variable) %>%
+  summarise(uniq_count = n(), .groups = "drop") 
+
+# rename variable column, was behaving weird so have this workaround
+uniq_counts$Sample_ID <- as.character(uniq_counts$variable)
+uniq_counts <- uniq_counts %>%
+  select(Sample_ID, uniq_count)
+
+# Get full list of samples from your metadata
+all_samples <- unique(meta$Sample_ID)
+
+# Identify missing samples (not in uniq_counts)
+missing_samples_df <- data.frame(
+  Sample_ID = setdiff(all_samples, uniq_counts$Sample_ID),
+  uniq_count = 0
+)
+
+# Combine counts with missing = 0 and join with metadata
+uniq <- bind_rows(uniq_counts, missing_samples_df) %>%
+  left_join(meta, by = "Sample_ID")
+
+# Can then plot this uniq data set to see samples specific unique species
+# However think grouping by sampler provides better info 
+
+
+
+# Sampler group & then uniq ------------
+# Updated code to group by sampler then find unique June 2025
+
+# Step 1: Add sampler identity
+meta_info <- meta %>% select(Sample_ID, Sampler)
+presence_with_sampler <- marti_presence_data %>%
+  pivot_longer(-c(Name, NCBI.Rank), names_to = "Sample_ID", values_to = "presence") %>%
+  left_join(meta_info, by = "Sample_ID")
+
+# Step 2: Summarise presence by sampler (1 if found in any of that sampler's samples)
+sampler_presence <- presence_with_sampler %>%
+  group_by(Name, Sampler) %>%
+  summarise(present = as.integer(any(presence == 1)), .groups = "drop") %>%
+  pivot_wider(names_from = Sampler, values_from = present, values_fill = 0)
+
+# Step 3: Identify taxa unique to one sampler
+sampler_presence$uniqueness <- rowSums(sampler_presence[ , -1]) == 1
+unique_taxa <- sampler_presence %>%
+  filter(uniqueness == TRUE)
+
+# Step 4: Count unique taxa per sampler
+uniq_counts_sampler <- unique_taxa %>%
+  pivot_longer(-c(Name, uniqueness), names_to = "Sampler", values_to = "presence") %>%
+  filter(presence == 1) %>%
+  group_by(Sampler) %>%
+  summarise(n_unique_taxa = n(), .groups = "drop")
+
+#Shared taxa per sampler 
+shared_taxa_all <- sampler_presence %>%
+  filter(uniqueness == FALSE)
+
+# Unique and shared taxa counts 
+long_taxa <- sampler_presence %>%
+  pivot_longer(cols = -c(Name, uniqueness), names_to = "Sampler", values_to = "Present") %>%
+  filter(Present == 1)  %>%
+  mutate(Type = ifelse(uniqueness, "Unique", "Shared"))
+
+taxa_counts <- long_taxa %>%
+  group_by(Sampler, Type) %>%
+  summarise(n_taxa = n(), .groups = "drop")
+
+# Total species per sampler
+species_per_sampler <- presence_with_sampler %>%
+  filter(presence == 1) %>%
+  group_by(Sampler) %>%
+  summarise(n_total_species = n_distinct(Name), .groups = "drop")
+
+
+#Plotting------------------------
+
+
 # Same order as all other plots 
 uniq$Sampler <- factor(uniq$Sampler, levels = sampler_levels)
 
@@ -187,8 +291,8 @@ location_uniq <- ggplot(uniq_summary_plot, aes(x=Sampler, y = uniq_mean, fill = 
                Sample_length = duration_labels
              )) +
   scale_fill_manual(values = sampler_colours) +
-  labs( x = "Sample",
-        y = "Mean number of unique genera ± SE") +
+  labs( x = "Sampler",
+        y = "Mean number of unique species ± SE") +
   scale_x_discrete(labels = c(
     "Compact" = "Coriolis\nCompact",
     "Micro" = "Coriolis\nMicro",
@@ -201,15 +305,14 @@ location_uniq <- ggplot(uniq_summary_plot, aes(x=Sampler, y = uniq_mean, fill = 
 location_uniq
 
 ggsave("Images/graphs_marti_0624/uniq_shared/Unique_Species_per_Sample.pdf",
-       plot = location_uniq , device = "svg", width = 12, height = 8)
-
+       plot = location_uniq , width = 12, height = 8)
 
 #Shared & Unique plot 
-# Working here - because I'm not sure if I trust it
 taxa_counts$Sampler <- factor(taxa_counts$Sampler, levels = sampler_levels)
-ggplot(taxa_counts, aes(x = Sampler, y = n_taxa, fill = Type)) +
+
+shared_unique <- ggplot(taxa_counts, aes(x = Sampler, y = n_taxa, fill = Type)) +
   geom_bar(stat = "identity", position = "stack", colour = "black") +
-  scale_fill_manual(values = c("Unique" = "#d53e4f", "Shared" = "#3288bd")) +
+  scale_fill_manual(values = c("Unique" = '#9e0142', "Shared" = '#3288bd')) +
   labs(
     y = "Number of species detected",
     x = "Sampler",
@@ -223,7 +326,10 @@ ggplot(taxa_counts, aes(x = Sampler, y = n_taxa, fill = Type)) +
   )) + 
   custom_theme
 
+shared_unique
 
+ggsave("Images/graphs_marti_0624/uniq_shared/Unique_Shared_Species_per_Sampler.pdf",
+       plot =shared_unique , width = 12, height = 8)
 
 
 #Plot - Group by Sample length 
