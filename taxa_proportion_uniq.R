@@ -6,21 +6,18 @@ library(reshape2)
 library(scales)
 library(RColorBrewer)
 
+# Edit this script o it is normalised to unique species per 100k and plot that!! 
 
-#sample meta data (this hasn't changed)
-meta <- read.csv("old_parameters_MARTI_samp_comp_read_data/Phyloseq_data/Sample_table.csv")
 
-#Marti-------------
-#Loading in data 
-#Older data
-#marti_sum <-read.csv("../Older MARTi Runs/MARTI_samp_comp_updated_parameters_0823/marti_output_august23_summarised_taxaname.csv")
+# Load in data ---------
+# Metadata
+meta <- read.csv("metadata/sample_table.csv")
 
-#New MARTi analysis 2024
-# marti_sum <- read.csv("samp_comp_0624_marti/samp_comp_summed_0624.csv")
+# Remove commas and convert to numeric
+meta$NumReads <- as.numeric(gsub(",", "", meta$NumReads))
 
-# Same MARTi data but exported June 2025 
-# These are all summed counts 
-marti <- read.delim("samp_comp_0624_marti/marti_assignments_lca_0.1_all_levels_2025-JUN-18_9-27-47.tsv")
+#Marti summarised data - Jul 2025
+marti <- read.delim("marti_outputs/marti_Jul_150_v2/summed_marti_assignments_lca_0.1_all_levels_2025-JUL-9_11-52-34.tsv")
 
 # Clean up column headers
 n_cols <- ncol(marti)
@@ -119,20 +116,16 @@ richness_combined <- rbind(species_summary, genus_summary, phylum_summary)
 # Merge on the metadata
 richness_data <- merge(richness_combined, meta, by.x = "Sample", by.y = "Sample_ID", all.x = TRUE)
 
-
-ggplot(richness_data, aes(x = Sampler, y = Richness, fill = Taxon_Level)) +
-  geom_col(position = "dodge") +
-  facet_wrap(~ Location) +
-  theme_minimal()
-
+# Calculate richness per 100k reads - using meta 
+richness_data$Richness_per_100k <- (richness_data$Richness / richness_data$NumReads) * 100000
 
 #Plot taxonomic richness -----
 # Get mean to plot 
 richness_data_avg <- richness_data %>%
   group_by(Location, Sample_length, Sampler, Taxon_Level) %>%
   summarise(
-    mean_richness = mean(Richness),
-    richness_se = sd(Richness) / sqrt(n()),
+    mean_richness = mean(Richness_per_100k),
+    richness_se = sd(Richness_per_100k) / sqrt(n()),
     .groups = "drop"
   )
 
@@ -157,7 +150,7 @@ rich_plot <- ggplot(richness_data_avg, aes(x = Sampler, y = mean_richness,
                Sample_length = duration_labels
              )) +
   scale_fill_manual(values = taxon_colours) +
-  labs(x = "Sampler", y = "Mean taxonomic richness ± SE",
+  labs(x = "Sampler", y = "Mean taxonomic richness (per 100k reads) ± SE",
        fill = "Taxonomic level") +
   scale_x_discrete(labels = c(
     "Compact" = "Coriolis\nCompact", "Micro" = "Coriolis\nMicro",
@@ -165,7 +158,7 @@ rich_plot <- ggplot(richness_data_avg, aes(x = Sampler, y = mean_richness,
     "Sass" = "SASS\n3100" )) +
   custom_theme
 
-ggsave("Images/graphs_marti_0624/uniq_shared/taxonomic_richness.pdf",
+ggsave("Images/uniq_shared/taxonomic_richness.pdf",
        plot = rich_plot, width = 12, height = 8)
 
 
@@ -211,16 +204,22 @@ missing_samples_df <- data.frame(
 uniq <- bind_rows(uniq_counts, missing_samples_df) %>%
   left_join(meta, by = "Sample_ID")
 
+# calculate per 100k reads
+# Calculate unique taxa per 100k reads
+uniq$uniq_per_100k <- (uniq$uniq_count / uniq$NumReads) * 100000
+
 # Can then plot this uniq data set to see samples specific unique species
 # However think grouping by sampler provides better info 
 
 
 
-# Sampler group & then uniq ------------
+# Group by sampler first  & then uniq ------------
+
 # Updated code to group by sampler then find unique June 2025
 
-# Step 1: Add sampler identity
+# Step 1: Add sampler identity to the presence data 
 meta_info <- meta %>% select(Sample_ID, Sampler)
+
 presence_with_sampler <- marti_presence_data %>%
   pivot_longer(-c(Name, NCBI.Rank), names_to = "Sample_ID", values_to = "presence") %>%
   left_join(meta_info, by = "Sample_ID")
@@ -231,37 +230,29 @@ sampler_presence <- presence_with_sampler %>%
   summarise(present = as.integer(any(presence == 1)), .groups = "drop") %>%
   pivot_wider(names_from = Sampler, values_from = present, values_fill = 0)
 
-# Step 3: Identify taxa unique to one sampler
+# Step 3: Identify unique & shared taxa
 sampler_presence$uniqueness <- rowSums(sampler_presence[ , -1]) == 1
-unique_taxa <- sampler_presence %>%
-  filter(uniqueness == TRUE)
 
-# Step 4: Count unique taxa per sampler
-uniq_counts_sampler <- unique_taxa %>%
-  pivot_longer(-c(Name, uniqueness), names_to = "Sampler", values_to = "presence") %>%
-  filter(presence == 1) %>%
-  group_by(Sampler) %>%
-  summarise(n_unique_taxa = n(), .groups = "drop")
-
-#Shared taxa per sampler 
-shared_taxa_all <- sampler_presence %>%
-  filter(uniqueness == FALSE)
-
-# Unique and shared taxa counts 
+# Step 4: Convert to long format and tag as 'Unique' or 'Shared'
 long_taxa <- sampler_presence %>%
   pivot_longer(cols = -c(Name, uniqueness), names_to = "Sampler", values_to = "Present") %>%
-  filter(Present == 1)  %>%
+  filter(Present == 1) %>%
   mutate(Type = ifelse(uniqueness, "Unique", "Shared"))
 
+# Step 5: Count number of taxa by type and sampler
 taxa_counts <- long_taxa %>%
   group_by(Sampler, Type) %>%
   summarise(n_taxa = n(), .groups = "drop")
 
-# Total species per sampler
-species_per_sampler <- presence_with_sampler %>%
-  filter(presence == 1) %>%
+# Step 6: Sum total reads per sampler
+reads_per_sampler <- meta %>%
   group_by(Sampler) %>%
-  summarise(n_total_species = n_distinct(Name), .groups = "drop")
+  summarise(total_reads = sum(NumReads), .groups = "drop")
+
+# Step 7: Join counts with reads and calculate taxa per 100k reads
+taxa_counts_per_100k <- taxa_counts %>%
+  left_join(reads_per_sampler, by = "Sampler") %>%
+  mutate(taxa_per_100k = round((n_taxa / total_reads) * 100000, 2))
 
 
 #Plotting------------------------
@@ -275,8 +266,8 @@ uniq$Sampler <- factor(uniq$Sampler, levels = sampler_levels)
 uniq_summary_plot <- uniq %>%
   group_by(Location, Sample_length, Sampler) %>%
   summarise(
-    uniq_mean = mean(uniq_count),
-    uniq_se = sd(uniq_count) / sqrt(n()),
+    uniq_mean = mean(uniq_per_100k),
+    uniq_se = sd(uniq_per_100k) / sqrt(n()),
     .groups = "drop"
   )
 
@@ -292,7 +283,7 @@ location_uniq <- ggplot(uniq_summary_plot, aes(x=Sampler, y = uniq_mean, fill = 
              )) +
   scale_fill_manual(values = sampler_colours) +
   labs( x = "Sampler",
-        y = "Mean number of unique species ± SE") +
+        y = "Mean number of unique species per 100k reads ± SE") +
   scale_x_discrete(labels = c(
     "Compact" = "Coriolis\nCompact",
     "Micro" = "Coriolis\nMicro",
@@ -304,17 +295,17 @@ location_uniq <- ggplot(uniq_summary_plot, aes(x=Sampler, y = uniq_mean, fill = 
 
 location_uniq
 
-ggsave("Images/graphs_marti_0624/uniq_shared/Unique_Species_per_Sample.pdf",
+ggsave("Images/uniq_shared/Unique_Species_per_Sample.pdf",
        plot = location_uniq , width = 12, height = 8)
 
 #Shared & Unique plot 
 taxa_counts$Sampler <- factor(taxa_counts$Sampler, levels = sampler_levels)
 
-shared_unique <- ggplot(taxa_counts, aes(x = Sampler, y = n_taxa, fill = Type)) +
+shared_unique <- ggplot(taxa_counts_per_100k, aes(x = Sampler, y = taxa_per_100k, fill = Type)) +
   geom_bar(stat = "identity", position = "stack", colour = "black") +
   scale_fill_manual(values = c("Unique" = '#9e0142', "Shared" = '#3288bd')) +
   labs(
-    y = "Number of species detected",
+    y = "Number of species detected per 100k reads",
     x = "Sampler",
     fill = "Taxon type"
   ) +  scale_x_discrete(labels = c(
@@ -328,10 +319,11 @@ shared_unique <- ggplot(taxa_counts, aes(x = Sampler, y = n_taxa, fill = Type)) 
 
 shared_unique
 
-ggsave("Images/graphs_marti_0624/uniq_shared/Unique_Shared_Species_per_Sampler.pdf",
+ggsave("Images/uniq_shared/Unique_Shared_Species_per_Sampler.pdf",
        plot =shared_unique , width = 12, height = 8)
 
 
+# Plots not for thesis -----------
 #Plot - Group by Sample length 
 length_uniq <- ggplot(uniq, aes(x=Sample_ID, y = uniq_count, fill = Sampler)) +
   geom_bar(stat = "identity") +

@@ -1,4 +1,4 @@
-
+# Script to plot phylum level stacked graphs
 
 #Library -----------------------------------------------------------------------
 library(phyloseq)   # Facilitate the import, storage, analysis, and graphical display of microbiome census data.
@@ -30,62 +30,60 @@ custom_theme <- theme_minimal(base_size = 12) +
 #Loading in data -----------------------------------------------------------------------
 
 
-#OTU table 
-#Using data from MARTi run with updated parameters 
+## OTU table ----
 
-#otu <- read.csv("../Older MARTi Runs/MARTI_samp_comp_updated_parameters_0823/marti_output_august23_assigned.csv") #August 2023
+# Export just the assigned read counts from MARTi front end (not summed)
+# Exported Jul 25, MinReadLength 150, Min Identity 85
+marti <- 
+  read.delim(
+  "marti_outputs/marti_Jul_150_v2/marti_assignments_lca_0.1_assigned_all_levels_2025-JUL-9_11-13-42.tsv")
 
-otu <- read.csv("samp_comp_0624_marti/samp_comp_assigned_otu_0624.csv") #MARTi run from June 2024
+# Clean it up
+# Drop the 'Name' and 'NCBI.Rank' columns
+marti <- marti %>%
+  # Drop 'Name' and 'NCBI.Rank' columns
+  select(-Name, -NCBI.Rank) %>%
+  # Remove either "..samp_comp_NHM_0624..Read.count" or "..samp_comp_CF_0624..Read.count" from column names
+  rename_with(
+    ~ str_remove(., "\\.\\.samp_comp_(NHM|CF)_0624\\.\\.Read\\.count")
+  )
+
+# Convert to OTU table for phyloseq
+otu <- marti
 rownames(otu) <- otu[,1] #Making the rownames the NCBI ID
 otu <- otu[,-1]          #remove 1st first col
 
-#taxa table - need to remake this
-#taxa <- read.csv("../Older MARTi Runs/MARTI_samp_comp_updated_parameters_0823/Taxonomy/taxa_lineage_sep_na.csv") #August 2023
-taxa <- read.csv("samp_comp_0624_marti/samp_comp_assigned_0624_taxaID_lineage.csv")
+## Taxa Table ----
+# Use Taxonkit to get lineage from IDs 
+# /data_processing_scripts/get_lineage_from_marti.sh
+# changing the sample Name and running from where the MARTi output is 
 
+taxa <- read.csv("marti_outputs/marti_Jul_150_v2/marti_assignments_lca_0.1_all_levels_2025-JUL-8_14-48-47_taxaID_lineage.csv")
 taxa <- taxa[-1, ] #Remove the first row
-
 taxa<- taxa %>% 
   mutate_if(is.character, as.factor)
-
 rownames(taxa) <- rownames(otu) #same rownames as the otu table
 taxa <- taxa[,-1]               
 
-#sample meta data (this hasn't changed between 2023 and 2024 MARTi parameters)
-meta <- read.csv("old_parameters_MARTI_samp_comp_read_data/Phyloseq_data/Sample_table.csv")
+## Metadata -----
 
+meta <- read.csv("metadata/Sample_table.csv")
 rownames(meta) <- meta[,1]                              #1st col is rownames
 meta$NumReads <- as.numeric(gsub(",","",meta$NumReads)) #Remove commas from the NumRead col
-
-#tables need to be matrices
-otu_mat<- as.matrix(otu)
-tax_mat<- as.matrix(taxa)
 
 
 # Phyloseq ----------------------------------------------------------------
 
+
+#tables need to be matrices
+otu_mat<- as.matrix(otu)
+tax_mat<- as.matrix(taxa)
 
 #Make phyloseq object
 phylo_OTU<- otu_table(otu_mat, taxa_are_rows = TRUE)
 phylo_TAX<- tax_table(tax_mat)
 phylo_samples <- sample_data(meta)
 phylo_object<- phyloseq(phylo_OTU, phylo_TAX, phylo_samples) #Bring them together
-
-#Read data visualisation https://deneflab.github.io/MicrobeMiseq/demos/mothur_2_phyloseq.html ------
-
-#Histogram - distribution of read data
-sample_sum_df <- data.frame(sum = sample_sums(phylo_object)) #sample_sums = no assigned reads per sample
-
-ggplot(sample_sum_df, aes(x = sum)) + 
-  geom_histogram(color = "black", fill = "indianred", binwidth = 15000) +
-  ggtitle("Distribution of sample sequencing depth") + 
-  xlab("Read counts") + ylab("Count") +
-  theme(axis.title.y = element_blank())
-#Very skewed towards lower read counts, but some pretty long reads also
-
-smin  <- min(sample_sums(phylo_object)) #136
-smean <- mean(sample_sums(phylo_object)) #13789.98
-smax  <- max(sample_sums(phylo_object)) #97279
 
 #Community composition ----
 samp_phylum <- phylo_object %>%
@@ -95,11 +93,12 @@ samp_phylum <- phylo_object %>%
   filter(Abundance > 0.02) %>%                         # Filter out low abundance taxa <2%
   arrange(phylum)                                      # Sort data frame alphabetically by phylum
 
-# Plot ------------
 
-# Setting up colour scheme 
-phylum_colours <- c('#9e0142', '#d53e4f', '#f46d43', '#fdae61', '#fee08b', '#e6f598', '#abdda4', '#66c2a5',
-                    '#3288bd', '#5e4fa2', '#A672A7', '#b5b3bd')
+
+
+# Plotting ------------
+
+## General Aesthetics -----
 
 location_labels <- c(
   "NHM" = "Natural History Museum",
@@ -120,141 +119,77 @@ sampler_levels <- c(
   "Sass"
 )
 
-# Reorder phylum by total abundance, but keep "Unassigned" last
+# Phylum plot --------
+
+phylum_colours <- c('#8B4513', '#9e0142', '#d53e4f', '#f46d43', '#fdae61', 
+                    '#fee08b', '#e6f598', '#abdda4', '#66c2a5',
+                    '#3288bd', '#5e4fa2', '#A672A7', '#b5b3bd')
+
+# Reorder phylum by total abundance, but keep "Higher_Taxa" last
 samp_phylum$phylum <- samp_phylum %>%
   mutate(phylum = fct_reorder(phylum, Abundance, .fun = sum)) %>%
-  mutate(phylum = fct_relevel(phylum, "Unassigned", after = Inf)) %>%
+  mutate(phylum = fct_relevel(phylum, "Higher_Taxa", after = Inf)) %>%
   pull(phylum)
 
-samp_phylum$Sampler <- factor(samp_phylum$Sampler, levels = sampler_levels)
+# Create a cleaner x-label for each replicate
+samp_phylum <- samp_phylum %>%
+  mutate(Sample_Label = paste(Sampler, Repeat, sep = "_"))
 
+samp_phylum <- samp_phylum %>%
+  mutate(
+    Sampler = factor(Sampler, levels = sampler_levels),
+    Sample_Label = paste(Sampler, Repeat, sep = "_"),
+    Sample_Label = factor(Sample_Label, levels = unique(Sample_Label[order(Sampler, Repeat)]))
+  )
 
-# Phylum level plot
-phylum_stacked_bar <- ggplot(samp_phylum, aes(x = Sampler, y = Abundance, fill = phylum)) + 
-  # facet_grid(Location~., labeller = labeller(Location = location_labels)) +
-  facet_grid(rows = vars(Location), cols = vars(Sample_length), 
-             labeller = labeller(
-               Location = location_labels,
-               Sample_length = duration_labels
-             )) +
+# Plot
+phylum_stacked_bar <- ggplot(samp_phylum, aes(x = Sample_Label, y = Abundance, fill = phylum)) +
+  facet_grid(rows = vars(Location), cols = vars(Sample_length),
+             labeller = labeller(Location = location_labels, Sample_length = duration_labels)) +
   geom_bar(stat = "identity") +
   scale_fill_manual(name = "Phylum", values = phylum_colours) +
-  theme(axis.title.x = element_blank()) +   # Remove x axis title
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
   ylab("Relative Abundance (Phyla > 2%) \n") +
-  scale_x_discrete(labels = c(
-    "Compact" = "Coriolis\nCompact",
-    "Micro" = "Coriolis\nMicro",
-    "Bobcat" = "InnovaPrep\nBobcat",
-    "Cub" = "InnovaPrep\nCub",
-    "Sass" = "SASS\n3100"
-  )) + 
-  custom_theme 
+  custom_theme +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    axis.title.x = element_blank()
+  ) 
 
-  # + ggtitle("Phylum Composition of Different Air Samplers by Sampling Site") 
+phylum_stacked_bar 
 
-phylum_stacked_bar
-
-ggsave("Images/graphs_marti_0624/taxonomic_abundance/Phylum_Stacked_Bar.png",
+# Needs to be saved as PNG for bars to look correct
+ggsave("Images/taxonomic_abundance/Phylum_Stacked_Bar.png",
        plot = phylum_stacked_bar, width = 12, height = 8, dpi = 600)
 
 
 
-#Taxonomy breakdown---------
+
+## Eukaryote level  -----------
 df_phylo <- psmelt(phylo_object)
-
-tot_sequences <-  meta %>% 
-  group_by(Sampler, Location, Sample_length) %>% 
-  summarise(avg_no_reads = mean(NumReads), avg_DNA_yield = mean(DNA_yield))
-
-#Calculating reads per taxonomic group
-tot_reads <-  meta %>% 
-  group_by(Sample_ID) %>% 
-  summarise(Sample = (Sample_ID), no_reads = (NumReads)) %>% 
-  #Need to have same header to merge properly later
-  select(-Sample_ID)
-
-# Define a function for summarizing data by a specific column value (code from ChatGPT, made what I had a function)
-summarise_by_column <- function(data, column_name, values, summary_column_name) {
-  data %>%
-    filter({{ column_name }} %in% values) %>% 
-    group_by(Sample) %>% 
-    summarise(!!summary_column_name := sum(Abundance))
-}
-
-#Run function for all Kingdoms
-Unclassified_sample <- summarise_by_column(df_phylo, kingdom, NA, "unclassified_reads")
-Eukaryote_sample    <- summarise_by_column(df_phylo, kingdom, "Eukaryota", "eukaryote_reads")
-Bacteria_sample     <- summarise_by_column(df_phylo, kingdom, "Bacteria", "bacteria_reads")
-Archaea_sample      <- summarise_by_column(df_phylo, kingdom, "Archaea", "archaea_reads")
-Virus_sample        <- summarise_by_column(df_phylo, kingdom, "Viruses", "virus_reads")
-
-fungi_phyla  <- c("Oomycota", "Mucoromycota", "Ascomycota", "Basidiomycota")
-algae_phyla  <- c("Bacillariophyta", "Chlorophyta")
-animal_phyla <- c("Nematoda", "Mollusca", "Arthropoda", "Chordata")
-
-Plant_sample  <- summarise_by_column(df_phylo, phylum, "Streptophyta", "plant_reads")
-Fungi_sample  <- summarise_by_column(df_phylo, phylum, fungi_phyla, "fungi_reads")
-Algae_sample  <- summarise_by_column(df_phylo, phylum, algae_phyla, "algae_reads")
-Animal_sample <- summarise_by_column(df_phylo, phylum, animal_phyla, "animal_reads")
-
-
-#Bringing it all together
-list_sample <- list(Unclassified_sample, Bacteria_sample, Eukaryote_sample, Archaea_sample,
-             Virus_sample, Plant_sample, Fungi_sample, Algae_sample, Animal_sample, tot_reads)
-
-all_reads <- Reduce(function(x, y) merge(x, y, all=TRUE), list_sample, accumulate=FALSE)
-
-#Adding Read proportion-
-all_reads <- all_reads %>% 
-  mutate(percent_unclassified_reads = (unclassified_reads/no_reads)*100,
-         percent_bacteria_reads     = (bacteria_reads/no_reads)*100,
-         percent_eukaryote_reads    = (eukaryote_reads/no_reads)*100,
-         percent_archaea_reads      = (archaea_reads/no_reads)*100,
-         percent_virus_reads        = (virus_reads/no_reads)*100,
-         percent_plant_reads        = (plant_reads/no_reads)*100,
-         percent_fungi_reads        = (fungi_reads/no_reads)*100,
-         percent_algae_reads        = (algae_reads/no_reads)*100,
-         percent_animal_reads       = (animal_reads/no_reads)*100)
-
-#Just Kingdom 
-kingdom_list <- list(Unclassified_sample, Bacteria_sample, Eukaryote_sample, Archaea_sample,
-                     Virus_sample, tot_reads)
-kingdom_reads <- Reduce(function(x, y) merge(x, y, all=TRUE), kingdom_list, accumulate=FALSE)
-
-#Eukaryote 
-eukaryote_list <- list(Plant_sample, Fungi_sample, Algae_sample, Animal_sample, tot_reads)
-eukaryote_reads <- Reduce(function(x, y) merge(x, y, all=TRUE), eukaryote_list, accumulate=FALSE)
-
-#Older data now in Older Marti Runs
-#write.csv(all_reads, "MARTI_samp_comp_updated_parameters_0823/taxa_proportions_2108.csv")  
-#write.csv(kingdom_reads, "MARTI_samp_comp_updated_parameters_0823/kingdom_proportions_3008.csv")  
-#write.csv(eukaryote_reads, "MARTI_samp_comp_updated_parameters_0823/eukaryoteproportions_3008.csv")  
-
-# write.csv(all_reads, "../samp_comp_0624_marti/taxa_proportions_0624.csv")  
-# write.csv(kingdom_reads, "../samp_comp_0624_marti/kingdom_proportions_0624.csv")  
-# write.csv(eukaryote_reads, "../samp_comp_0624_marti/eukaryoteproportions_0624.csv")  
-
-
-#Plot Eukaryote phylum proportions----------------------------------------------
 
 phylo_eukaryote = subset_taxa(phylo_object, kingdom=="Eukaryota")
 
-#Relative abundance graphs ----------------------------------------------
 #Just animal/fungi/plant/algae
 
-samp_phylum_euk <- phylo_eukaryote %>% 
+samp_phylum_euk <- phylo_eukaryote %>% # Using the subset taxa
   tax_glom(taxrank = "phylum") %>%   
   transform_sample_counts(function(x) {x/sum(x)} ) %>% # Transform to rel. abundance - compared to pass reads
   psmelt()   %>%                                      
   #Adding new column to look at higher level
   mutate(Taxa = case_when(
     phylum == "Streptophyta" ~ "Plant",
-    phylum == "Unassigned" ~ "Unassigned",
+    phylum == "Higher_Taxa" ~ "Higher Taxa",
     phylum %in% algae_phyla ~ "Algae",
     phylum %in% animal_phyla ~ "Animal",
-    phylum %in% fungi_phyla ~ "Fungi"))
+    phylum %in% fungi_phyla ~ "Fungi"
+    ),
+    # Set legend order here
+    Taxa = factor(Taxa, levels = c("Animal", "Fungi", "Algae", "Plant", "Higher Taxa"))
+  )
 
-taxa_colours <-  c( '#3288bd', '#d53e4f','#fee08b', '#abdda4', '#b5b3bd')
+taxa_colours <-  c( '#9e0142','#fee08b','#3288bd','#A672A7', '#b5b3bd')
+
 
 samp_phylum_euk$Sampler <- factor(samp_phylum_euk$Sampler, levels = sampler_levels)
 
@@ -278,13 +213,13 @@ eukaryote_plot <- ggplot(samp_phylum_euk, aes(x = Sampler, y = Abundance, fill =
     "Bobcat" = "InnovaPrep\nBobcat",
     "Cub" = "InnovaPrep\nCub",
     "Sass" = "SASS\n3100"
-  )) 
+  ))
 
 
-ggsave("Images/graphs_marti_0624/taxonomic_abundance/Eukaryote_Stacked_Bar.png",
+ggsave("Images/taxonomic_abundance/Eukaryote_Stacked_Bar.png",
        plot = eukaryote_plot, width = 12, height = 8, dpi = 600)
 
-# To group time and sampler
+# To plot grouped by time and sampler - prefer the earlier graph 
 samp_phylum_euk$Sampler_Length <- paste(samp_phylum_euk$Sampler,
                                         samp_phylum_euk$Sample_length)
 
@@ -311,11 +246,9 @@ eukaryote_taxa_graph <-  ggplot(samp_phylum_euk, aes(x = Sampler_Length, y = Abu
 
 eukaryote_taxa_graph
 
-ggsave("/Images/graphs_marti_0624/taxonomic_abundance/Eukaryote_Stacked_Bar.png",
-       plot = eukaryote_taxa_graph, width = 6, height = 8, dpi = 600)
 
 
-#All phyla in balck and white, prefer the graph from earlier in the code
+#All phyla in black and white, prefer the graph from earlier in the code
 eukaryote_phylum_graph <- ggplot(samp_phylum_euk, aes(x = Sampler_Length, y = Abundance, fill = phylum)) + 
   facet_grid(Location~.) +
   geom_bar(stat = "identity") +
@@ -429,51 +362,146 @@ ggsave("../Images/graphs_marti_0624/taxonomic_abundance/Kingdom_Count_Stacked_Ba
        plot = kingdom_norm_graph , device = "svg", width = 10, height = 8)
 
 
-# Top 10 taxa per sample --------------------------------------------------
-#Decided not to repeat this and instead did it in a sperate script using the summed data - 0624
 
-#devtools::install_github("gmteunisse/fantaxtic")
-top_sp <- top_taxa(phylo_object, 
-                tax_level = "Species", 
-                n_taxa = 10,
-                grouping = "Sample_ID")
+# Older code - no longer using ---------------------------
 
-top10_species <- top_sp$top_taxa %>% 
-  reframe(Sample_ID, tax_rank, abundance, Species)
+##  Read data visualisation https://deneflab.github.io/MicrobeMiseq/demos/mothur_2_phyloseq.html 
 
-write.csv(top10_species, "MARTI_samp_comp_updated_parameters_0823/top10_species_2508.csv") 
+# #Histogram - distribution of read data
+# sample_sum_df <- data.frame(sum = sample_sums(phylo_object)) #sample_sums = no assigned reads per sample
+# 
+# ggplot(sample_sum_df, aes(x = sum)) + 
+#   geom_histogram(color = "black", fill = "indianred", binwidth = 15000) +
+#   ggtitle("Distribution of sample sequencing depth") + 
+#   xlab("Read counts") + ylab("Count") +
+#   theme(axis.title.y = element_blank())
+# #Very skewed towards lower read counts, but some pretty long reads also
+# 
+# smin  <- min(sample_sums(phylo_object)) #136
+# smean <- mean(sample_sums(phylo_object)) #13789.98
+# smax  <- max(sample_sums(phylo_object)) #97279
 
-top_phy <- top_taxa(phylo_object, 
-                tax_level = "Phylum", 
-                n_taxa = 10,
-                grouping = "Sample_ID")
 
-top10_phylum <- top_phy$top_taxa %>% 
-  reframe(Sample_ID, tax_rank, abundance, Phylum)
+## Top 10 taxa per sample
+#Decided not to repeat this and instead now in a diff script
+# 
+# #devtools::install_github("gmteunisse/fantaxtic")
+# top_sp <- top_taxa(phylo_object, 
+#                 tax_level = "Species", 
+#                 n_taxa = 10,
+#                 grouping = "Sample_ID")
+# 
+# top10_species <- top_sp$top_taxa %>% 
+#   reframe(Sample_ID, tax_rank, abundance, Species)
+# 
+# write.csv(top10_species, "MARTI_samp_comp_updated_parameters_0823/top10_species_2508.csv") 
+# 
+# top_phy <- top_taxa(phylo_object, 
+#                 tax_level = "Phylum", 
+#                 n_taxa = 10,
+#                 grouping = "Sample_ID")
+# 
+# top10_phylum <- top_phy$top_taxa %>% 
+#   reframe(Sample_ID, tax_rank, abundance, Phylum)
+# 
+# write.csv(top10_phylum, "MARTI_samp_comp_updated_parameters_0823/top10_phylum_2508.csv")  
+# 
+# #To plot something similar 
+# ggplot(top10_species, aes(x = Sample_ID, y = abundance, fill = Species)) +
+#          geom_col(color = "black") +
+#   scale_y_continuous(breaks = seq(0, 1, 0.1)) + ylab("Average relative abundance") 
+# 
+# # Pulling out some stats
+# 
+# # Define phyla of interest
+# target_phyla <- c("Streptophyta", "Arthropoda", "Chordata")
+# 
+# # Summarise average relative abundance
+# summary_table <- samp_phylum_euk %>%
+#   filter(phylum %in% target_phyla) %>%
+#   group_by(Location, Sampler, Sample_length, phylum) %>%
+#   summarise(
+#     mean_abundance = mean(Abundance, na.rm = TRUE),
+#     sd_abundance = sd(Abundance, na.rm = TRUE),
+#     n = n(),
+#     .groups = "drop"
+#   )
+# 
+# summary_table <- summary_table %>%
+#   mutate(across(contains("abundance"), ~ round(. * 100, 1))) %>%
+#   arrange(desc(mean_abundance))
 
-write.csv(top10_phylum, "MARTI_samp_comp_updated_parameters_0823/top10_phylum_2508.csv")  
+# Statistics I no longer use 
+tot_sequences <-  meta %>% 
+  group_by(Sampler, Location, Sample_length) %>% 
+  summarise(avg_no_reads = mean(NumReads), avg_DNA_yield = mean(DNA_yield))
 
-#To plot something similar 
-ggplot(top10_species, aes(x = Sample_ID, y = abundance, fill = Species)) +
-         geom_col(color = "black") +
-  scale_y_continuous(breaks = seq(0, 1, 0.1)) + ylab("Average relative abundance") 
+#Calculating reads per taxonomic group
+tot_reads <-  meta %>% 
+  group_by(Sample_ID) %>% 
+  summarise(Sample = (Sample_ID), no_reads = (NumReads)) %>% 
+  #Need to have same header to merge properly later
+  select(-Sample_ID)
 
-# Pulling out some stats -------
+# Define a function for summarizing data by a specific column value (code from ChatGPT, made what I had a function)
+summarise_by_column <- function(data, column_name, values, summary_column_name) {
+  data %>%
+    filter({{ column_name }} %in% values) %>% 
+    group_by(Sample) %>% 
+    summarise(!!summary_column_name := sum(Abundance))
+}
 
-# Define phyla of interest
-target_phyla <- c("Streptophyta", "Arthropoda", "Chordata")
+#Run function for all Kingdoms
+Unclassified_sample <- summarise_by_column(df_phylo, kingdom, "Higher_Taxa", "unclassified_reads")
+Eukaryote_sample    <- summarise_by_column(df_phylo, kingdom, "Eukaryota", "eukaryote_reads")
+Bacteria_sample     <- summarise_by_column(df_phylo, kingdom, "Bacteria", "bacteria_reads")
+Archaea_sample      <- summarise_by_column(df_phylo, kingdom, "Archaea", "archaea_reads")
+Virus_sample        <- summarise_by_column(df_phylo, kingdom, "Viruses", "virus_reads")
 
-# Summarise average relative abundance
-summary_table <- samp_phylum_euk %>%
-  filter(phylum %in% target_phyla) %>%
-  group_by(Location, Sampler, Sample_length, phylum) %>%
-  summarise(
-    mean_abundance = mean(Abundance, na.rm = TRUE),
-    sd_abundance = sd(Abundance, na.rm = TRUE),
-    n = n(),
-    .groups = "drop"
-  )
+fungi_phyla  <- c("Oomycota", "Mucoromycota", "Ascomycota", "Basidiomycota")
+algae_phyla  <- c("Bacillariophyta", "Chlorophyta")
+animal_phyla <- c("Nematoda", "Mollusca", "Arthropoda", "Chordata")
 
-summary_table <- summary_table %>%
-  mutate(across(contains("abundance"), ~ round(. * 100, 1))) %>%
-  arrange(desc(mean_abundance))
+Plant_sample  <- summarise_by_column(df_phylo, phylum, "Streptophyta", "plant_reads")
+Fungi_sample  <- summarise_by_column(df_phylo, phylum, fungi_phyla, "fungi_reads")
+Algae_sample  <- summarise_by_column(df_phylo, phylum, algae_phyla, "algae_reads")
+Animal_sample <- summarise_by_column(df_phylo, phylum, animal_phyla, "animal_reads")
+
+
+#Bringing it all together
+list_sample <- list(Unclassified_sample, Bacteria_sample, Eukaryote_sample, Archaea_sample,
+                    Virus_sample, Plant_sample, Fungi_sample, Algae_sample, Animal_sample, tot_reads)
+
+all_reads <- Reduce(function(x, y) merge(x, y, all=TRUE), list_sample, accumulate=FALSE)
+
+#Adding Read proportion-
+all_reads <- all_reads %>% 
+  mutate(percent_unclassified_reads = (unclassified_reads/no_reads)*100,
+         percent_bacteria_reads     = (bacteria_reads/no_reads)*100,
+         percent_eukaryote_reads    = (eukaryote_reads/no_reads)*100,
+         percent_archaea_reads      = (archaea_reads/no_reads)*100,
+         percent_virus_reads        = (virus_reads/no_reads)*100,
+         percent_plant_reads        = (plant_reads/no_reads)*100,
+         percent_fungi_reads        = (fungi_reads/no_reads)*100,
+         percent_algae_reads        = (algae_reads/no_reads)*100,
+         percent_animal_reads       = (animal_reads/no_reads)*100)
+
+#Just Kingdom 
+kingdom_list <- list(Unclassified_sample, Bacteria_sample, Eukaryote_sample, Archaea_sample,
+                     Virus_sample, tot_reads)
+kingdom_reads <- Reduce(function(x, y) merge(x, y, all=TRUE), kingdom_list, accumulate=FALSE)
+
+#Eukaryote 
+eukaryote_list <- list(Plant_sample, Fungi_sample, Algae_sample, Animal_sample, tot_reads)
+eukaryote_reads <- Reduce(function(x, y) merge(x, y, all=TRUE), eukaryote_list, accumulate=FALSE)
+
+
+#Older data now in Older Marti Runs
+#write.csv(all_reads, "MARTI_samp_comp_updated_parameters_0823/taxa_proportions_2108.csv")  
+#write.csv(kingdom_reads, "MARTI_samp_comp_updated_parameters_0823/kingdom_proportions_3008.csv")  
+#write.csv(eukaryote_reads, "MARTI_samp_comp_updated_parameters_0823/eukaryote_proportions_3008.csv")  
+
+# write.csv(all_reads, "../samp_comp_0624_marti/taxa_proportions_0624.csv")  
+# write.csv(kingdom_reads, "../samp_comp_0624_marti/kingdom_proportions_0624.csv")  
+# write.csv(eukaryote_reads, "../samp_comp_0624_marti/eukaryoteproportions_0624.csv")  
+
