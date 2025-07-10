@@ -6,9 +6,6 @@ library(reshape2)
 library(scales)
 library(RColorBrewer)
 
-# Edit this script o it is normalised to unique species per 100k and plot that!! 
-
-
 # Load in data ---------
 # Metadata
 meta <- read.csv("metadata/sample_table.csv")
@@ -16,7 +13,7 @@ meta <- read.csv("metadata/sample_table.csv")
 # Remove commas and convert to numeric
 meta$NumReads <- as.numeric(gsub(",", "", meta$NumReads))
 
-#Marti summarised data - Jul 2025
+## MARTi ---
 marti <- read.delim("marti_outputs/marti_Jul_150_v2/summed_marti_assignments_lca_0.1_all_levels_2025-JUL-9_11-52-34.tsv")
 
 # Clean up column headers
@@ -28,6 +25,31 @@ if (n_cols > 3) {
   new_colnames[4:n_cols] <- sub("\\.\\.samp_comp.*", "", new_colnames[4:n_cols])
   colnames(marti) <- new_colnames
 }
+
+marti_long <- pivot_longer(marti, cols = starts_with(c("CF_", "NHM_")),
+                           names_to = "Sample_ID",
+                           values_to = "Count")
+
+marti_long$Count <- as.numeric(marti_long$Count)
+
+## Merge on metadata and calculate ------
+marti_meta <- merge(marti_long, meta)
+marti_meta$NumReads <- as.numeric(gsub(",","",marti_meta$NumReads)) #Remove commas from the NumRead col
+marti_meta <- marti_meta %>% 
+  mutate(
+    percent_classified_read = Count / NumReads * 100,
+    HPM = Count / NumReads * 1e6,  #hits per million
+    HP100k = Count / NumReads * 100000
+  )
+
+# Filter the data on read count and HPM
+filtered_marti <- marti_meta  %>% 
+  filter(HPM >= 100, Count > 5)
+
+# Recreate wide format with filtered counts
+filtered_wide <- filtered_marti %>%
+  select(Name, NCBI.ID, NCBI.Rank, Sample_ID, Count) %>%  # adjust if your ID columns differ
+  pivot_wider(names_from = Sample_ID, values_from = Count, values_fill = 0)
 
 # Plot aesthetics ---------
 sampler_colours <- setNames(brewer.pal(5, "Set2"), 
@@ -61,7 +83,7 @@ sampler_levels <- c(
 )
 
 
-# Function to extract one taxonomic level ----------
+# Function to extract one taxonomic level  ----------
 extract_rank_df <- function(data, rank) {
   data %>%
     filter(NCBI.Rank == rank) %>%
@@ -69,17 +91,26 @@ extract_rank_df <- function(data, rank) {
 }
 
 # Apply function 
-marti_species <- extract_rank_df(marti, "species")
-marti_genus   <- extract_rank_df(marti, "genus")
-marti_phylum  <- extract_rank_df(marti, "phylum")
+marti_species <- extract_rank_df(filtered_wide, "species")
+marti_genus   <- extract_rank_df(filtered_wide, "genus")
+marti_phylum  <- extract_rank_df(filtered_wide, "phylum")
+
 
 # Data wrangling --------------
-# Option to do diff taxonomic levels 
 
-# Function to vreate just presence absence matrix
+# Function to create presence absence matrix
+# If count below 3 markes as absent 
 make_presence_absence <- function(df) {
-  df[, -c(1,2)] <- ifelse(df[, -c(1,2)] > 0, 1, 0)
-  return(df)
+  result_df <- df   # Copy the original data to avoid modifying it directly
+  
+  # Identify the columns to convert (all except the first two (Name & NCBI>.ID)
+  data_columns <- colnames(df)[-c(1, 2)]
+  
+  # Apply threshold: if value >0, mark as 1 (present), otherwise 0 (absent)
+  result_df[, data_columns] <- ifelse(df[, data_columns] > 0, 1, 0)
+  
+  # Return the modified data frame
+  return(result_df)
 }
 
 marti_presence_species <- make_presence_absence(marti_species)
@@ -209,9 +240,6 @@ uniq <- bind_rows(uniq_counts, missing_samples_df) %>%
 uniq$uniq_per_100k <- (uniq$uniq_count / uniq$NumReads) * 100000
 
 # Can then plot this uniq data set to see samples specific unique species
-# However think grouping by sampler provides better info 
-
-
 
 # Group by sampler first  & then uniq ------------
 
@@ -299,7 +327,7 @@ ggsave("Images/uniq_shared/Unique_Species_per_Sample.pdf",
        plot = location_uniq , width = 12, height = 8)
 
 #Shared & Unique plot 
-taxa_counts$Sampler <- factor(taxa_counts$Sampler, levels = sampler_levels)
+taxa_counts_per_100k$Sampler <- factor(taxa_counts_per_100k$Sampler, levels = sampler_levels)
 
 shared_unique <- ggplot(taxa_counts_per_100k, aes(x = Sampler, y = taxa_per_100k, fill = Type)) +
   geom_bar(stat = "identity", position = "stack", colour = "black") +
