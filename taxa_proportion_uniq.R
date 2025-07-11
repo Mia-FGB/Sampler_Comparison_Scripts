@@ -151,9 +151,18 @@ richness_data <- merge(richness_combined, meta, by.x = "Sample", by.y = "Sample_
 richness_data$Richness_per_100k <- (richness_data$Richness / richness_data$NumReads) * 100000
 
 #Plot taxonomic richness -----
-# Get mean to plot 
+# Get mean to plot - grouped by location and duration
+# richness_data_avg <- richness_data %>%
+#   group_by(Location, Sample_length, Sampler, Taxon_Level) %>%
+#   summarise(
+#     mean_richness = mean(Richness_per_100k),
+#     richness_se = sd(Richness_per_100k) / sqrt(n()),
+#     .groups = "drop"
+#   )
+
+# Get mean to plot - just sampler
 richness_data_avg <- richness_data %>%
-  group_by(Location, Sample_length, Sampler, Taxon_Level) %>%
+  group_by(Sampler, Taxon_Level) %>%
   summarise(
     mean_richness = mean(Richness_per_100k),
     richness_se = sd(Richness_per_100k) / sqrt(n()),
@@ -175,11 +184,11 @@ rich_plot <- ggplot(richness_data_avg, aes(x = Sampler, y = mean_richness,
                     ymax = mean_richness + richness_se),
                 position = position_dodge(width = 0.9),
                 width = 0.2, colour = "black") +
-  facet_grid(rows = vars(Location), cols = vars(Sample_length),
-             labeller = labeller(
-               Location = location_labels,
-               Sample_length = duration_labels
-             )) +
+  # facet_grid(rows = vars(Location), cols = vars(Sample_length),
+  #            labeller = labeller(
+  #              Location = location_labels,
+  #              Sample_length = duration_labels
+  #            )) +
   scale_fill_manual(values = taxon_colours) +
   labs(x = "Sampler", y = "Mean taxonomic richness (per 100k reads) ± SE",
        fill = "Taxonomic level") +
@@ -189,7 +198,9 @@ rich_plot <- ggplot(richness_data_avg, aes(x = Sampler, y = mean_richness,
     "Sass" = "SASS\n3100" )) +
   custom_theme
 
-ggsave("Images/uniq_shared/taxonomic_richness.pdf",
+rich_plot 
+
+ggsave("Images/uniq_shared/taxonomic_richness_comb.pdf",
        plot = rich_plot, width = 12, height = 8)
 
 
@@ -349,6 +360,7 @@ shared_unique
 
 ggsave("Images/uniq_shared/Unique_Shared_Species_per_Sampler.pdf",
        plot =shared_unique , width = 12, height = 8)
+
 
 
 # Plots not for thesis -----------
