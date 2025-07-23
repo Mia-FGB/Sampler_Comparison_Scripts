@@ -2,29 +2,23 @@
 
 #Library -----------------------------------------------------------------------
 library(phyloseq)   # Facilitate the import, storage, analysis, and graphical display of microbiome census data.
-library(vegan)      # Analysis of variance using distance matrices using the adonis2 function
-library(Maaslin2)   # Determine multivariable association between metadata and microbial meta-omics features; differential abundance analysis
 library(ggplot2)    # Generate visualization plots 
-library(ggsignif)   # Visualize comparisons and the significance between two groups
 library(dplyr)
 library(RColorBrewer)
-library(BiocManager)
-library(Biostrings)
-library(knitr)
-library(scater)
-library(patchwork)
 library(stringr)
-library(fantaxtic)
-library(data.table)
-library(tidyr)
 library(forcats)
-library(Cairo)
+library(showtext)
+
+# Use a font that supports Unicode
+font_add_google("Roboto")
+showtext_auto()
 
 # Theme for plots ------
-custom_theme <- theme_minimal(base_size = 12) +
+custom_theme <- theme_minimal(base_size = 40) +
   theme(
     axis.line = element_line(color = "black", linewidth = 0.3),
     panel.grid.minor = element_blank(),
+    panel.grid.major = element_blank(),
   )
 
 #Loading in data -----------------------------------------------------------------------
@@ -159,9 +153,9 @@ phylum_stacked_bar <- ggplot(samp_phylum, aes(x = Sample_Label, y = Abundance, f
 
 phylum_stacked_bar 
 
-# Needs to be saved as PNG for bars to look correct
+# Needs to be saved as PNG for bars to look correct - base size for text is high so it exports correctly 
 ggsave("Images/taxonomic_abundance/Phylum_Stacked_Bar.png",
-       plot = phylum_stacked_bar, width = 12, height = 8, dpi = 600)
+       plot = phylum_stacked_bar, width = 12, height = 8, dpi = 300)
 
 
 

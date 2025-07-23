@@ -7,6 +7,11 @@ library(patchwork)
 library(RColorBrewer)
 library(tidyr)
 library(patchwork)
+library(showtext)
+
+# Use a font that supports Unicode
+font_add_google("Roboto")
+showtext_auto()
 
 #read in data
 data <- read.csv("metadata/sampler_comparison_DNA_yield.csv")
@@ -211,7 +216,7 @@ yield_boxplot <- ggplot(insect_remove_normalised, aes(x=Air_Sampler, y = DNA_yie
   labs(y = "DNA yield (ng)", x = "Air Sampler") +
   scale_x_discrete(labels = c(
     "Coriolis Compact" = "Coriolis\nCompact",
-    "Coriolis μ" = "Coriolis\nμ",
+    "Coriolis μ" = "Coriolis μ",
     "InnovaPrep Bobcat" = "InnovaPrep\nBobcat",
     "InnovaPrep Cub" = "InnovaPrep\nCub",
     "SASS 3100" = "SASS\n3100"
@@ -225,7 +230,7 @@ norm_yield_boxplot <- ggplot(insect_remove_normalised, aes(x=Air_Sampler, y = no
   labs(y = " Normalised DNA yield (ng/L)", x = "Air Sampler") +
   scale_x_discrete(labels = c(
     "Coriolis Compact" = "Coriolis\nCompact",
-    "Coriolis μ" = "Coriolis\nμ",
+    "Coriolis μ" = "Coriolis μ",
     "InnovaPrep Bobcat" = "InnovaPrep\nBobcat",
     "InnovaPrep Cub" = "InnovaPrep\nCub",
     "SASS 3100" = "SASS\n3100"

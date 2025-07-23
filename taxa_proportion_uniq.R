@@ -1,3 +1,5 @@
+# R script to identify unique taxa per sampler / location and plot proportion
+
 #Packages
 library(dplyr)
 library(ggplot2)
@@ -5,6 +7,11 @@ library(tidyr)
 library(reshape2)
 library(scales)
 library(RColorBrewer)
+library(showtext)
+
+# Use a font that supports Unicode
+font_add_google("Roboto")
+showtext_auto()
 
 # Load in data ---------
 # Metadata
