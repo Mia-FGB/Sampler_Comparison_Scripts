@@ -93,7 +93,8 @@ samp_phylum <- phylo_object %>%
   filter(Abundance > 0.02) %>%                         # Filter out low abundance taxa <2%
   arrange(phylum)                                      # Sort data frame alphabetically by phylum
 
-
+# Rename the Micro sampler
+samp_phylum$Sampler <- gsub("Micro", "μ", samp_phylum$Sampler)
 
 
 # Plotting ------------
@@ -113,7 +114,7 @@ duration_labels <- c(
 
 sampler_levels <- c(
   "Compact",
-  "Micro",
+  "μ",
   "Bobcat",
   "Cub",
   "Sass"
@@ -171,6 +172,9 @@ df_phylo <- psmelt(phylo_object)
 phylo_eukaryote = subset_taxa(phylo_object, kingdom=="Eukaryota")
 
 #Just animal/fungi/plant/algae
+fungi_phyla  <- c("Oomycota", "Mucoromycota", "Ascomycota", "Basidiomycota")
+algae_phyla  <- c("Bacillariophyta", "Chlorophyta")
+animal_phyla <- c("Nematoda", "Mollusca", "Arthropoda", "Chordata")
 
 samp_phylum_euk <- phylo_eukaryote %>% # Using the subset taxa
   tax_glom(taxrank = "phylum") %>%   
@@ -187,6 +191,9 @@ samp_phylum_euk <- phylo_eukaryote %>% # Using the subset taxa
     # Set legend order here
     Taxa = factor(Taxa, levels = c("Animal", "Fungi", "Algae", "Plant", "Higher Taxa"))
   )
+
+# Rename the Micro sampler
+samp_phylum_euk$Sampler <- gsub("Micro", "μ", samp_phylum_euk$Sampler)
 
 taxa_colours <-  c( '#9e0142','#fee08b','#3288bd','#A672A7', '#b5b3bd')
 
@@ -209,7 +216,7 @@ eukaryote_plot <- ggplot(samp_phylum_euk, aes(x = Sampler, y = Abundance, fill =
   custom_theme +  
   scale_x_discrete(labels = c(
     "Compact" = "Coriolis\nCompact",
-    "Micro" = "Coriolis\nMicro",
+    "μ" = "Coriolis μ",
     "Bobcat" = "InnovaPrep\nBobcat",
     "Cub" = "InnovaPrep\nCub",
     "Sass" = "SASS\n3100"
@@ -232,12 +239,12 @@ eukaryote_taxa_graph <-  ggplot(samp_phylum_euk, aes(x = Sampler_Length, y = Abu
   xlab("Sampler and Duration") +
   scale_x_discrete(labels = c(
     "Compact 25" = "Coriolis\nCompact\n25",
-    "Micro 25" = "Coriolis\nMicro\n25",
+    "μ 25" = "Coriolis μ\n25",
     "Bobcat 25" = "InnovaPrep\nBobcat\n25",
     "Cub 25" = "InnovaPrep\nCub\n25",
     "Sass 25" = "SASS\n3100\n25",
     "Compact 50" = "Coriolis\nCompact\n50",
-    "Micro 50" = "Coriolis\nMicro\n50",
+    "μ 50" = "Coriolis μ\n50",
     "Bobcat 50" = "InnovaPrep\nBobcat\n50",
     "Cub 50" = "InnovaPrep\nCub\n50",
     "Sass 50" = "SASS\n3100\n50"
@@ -457,10 +464,6 @@ Eukaryote_sample    <- summarise_by_column(df_phylo, kingdom, "Eukaryota", "euka
 Bacteria_sample     <- summarise_by_column(df_phylo, kingdom, "Bacteria", "bacteria_reads")
 Archaea_sample      <- summarise_by_column(df_phylo, kingdom, "Archaea", "archaea_reads")
 Virus_sample        <- summarise_by_column(df_phylo, kingdom, "Viruses", "virus_reads")
-
-fungi_phyla  <- c("Oomycota", "Mucoromycota", "Ascomycota", "Basidiomycota")
-algae_phyla  <- c("Bacillariophyta", "Chlorophyta")
-animal_phyla <- c("Nematoda", "Mollusca", "Arthropoda", "Chordata")
 
 Plant_sample  <- summarise_by_column(df_phylo, phylum, "Streptophyta", "plant_reads")
 Fungi_sample  <- summarise_by_column(df_phylo, phylum, fungi_phyla, "fungi_reads")

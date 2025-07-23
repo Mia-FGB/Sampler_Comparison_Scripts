@@ -10,6 +10,8 @@ library(patchwork)
 
 #read in data
 data <- read.csv("metadata/sampler_comparison_DNA_yield.csv")
+#rename sampler
+data$Air_Sampler <- gsub("Micro", "μ", data$Air_Sampler)
 
 # volume of air sampled
 data_air_vol <- data %>% 
@@ -45,14 +47,14 @@ custom_theme <- theme_minimal(base_size = 12) +
 # air_sampler_palette <- c(
 #   "InnovaPrep Bobcat" = "#FF7F50", 
 #   "Coriolis Compact" = "#008080", 
-#   "Coriolis Micro" = "#FFD700", 
+#   "Coriolis μ" = "#FFD700", 
 #   "InnovaPrep Cub" = "#8A2BE2", 
 #   "SASS 3100" = "#00CED1"
 # )
 
 air_sampler_palette <- setNames(brewer.pal(5, "Set2"), 
                                 c("InnovaPrep Bobcat", "Coriolis Compact", 
-                                  "Coriolis Micro", "InnovaPrep Cub", 
+                                  "Coriolis μ", "InnovaPrep Cub", 
                                   "SASS 3100"))
 
 
@@ -63,20 +65,20 @@ ggplot(data_air_vol, aes(x = air_volume, y= DNA_yield, colour = Air_Sampler)) +
 
 #DNA Yield against Air samples -----------------
 
-# Samplers are different shapes
- ggplot(data_air_vol, aes(x = air_volume, y= DNA_yield)) +
-  geom_point(aes(shape = Air_Sampler, colour = Location), size = 5) +
-  #so colours match my other graphs
-  scale_color_manual(values = c("#FF7F50", "#008080")) + 
-  #change the point shapes to match other graphs
-  scale_shape_manual(values = c(19, 17, 15, 3, 4)) +
-  theme_bw() +
-  #Also find a way to highlight which samples contained insects
-  geom_text(aes(label = Insect_Label, hjust = -0.25, size = 5)) +
-  #axis labels
-  labs(x = "Log Volume of air sampled (L)", y = "Log DNA yield (ng)", title = "DNA yield (ng)") +
-  custom_theme +
-  scale_y_log10() + scale_x_log10(labels = scales::comma)
+# # Samplers are different shapes
+#  ggplot(data_air_vol, aes(x = air_volume, y= DNA_yield)) +
+#   geom_point(aes(shape = Air_Sampler, colour = Location), size = 5) +
+#   #so colours match my other graphs
+#   scale_color_manual(values = c("#FF7F50", "#008080")) + 
+#   #change the point shapes to match other graphs
+#   scale_shape_manual(values = c(19, 17, 15, 3, 4)) +
+#   theme_bw() +
+#   #Also find a way to highlight which samples contained insects
+#   geom_text(aes(label = Insect_Label, hjust = -0.25, size = 5)) +
+#   #axis labels
+#   labs(x = "Log Volume of air sampled (L)", y = "Log DNA yield (ng)", title = "DNA yield (ng)") +
+#   custom_theme +
+#   scale_y_log10() + scale_x_log10(labels = scales::comma)
 
 
 # Samplers diff colours ----
@@ -104,7 +106,7 @@ dna_yield <- ggplot(data_air_vol, aes(x = air_volume, y = DNA_yield)) +
   labs(x = "Volume of air sampled (L)", 
        y = "DNA yield (ng)",
        colour = "Air Sampler") +
-  custom_theme +
+  custom_theme
   # scale_y_log10() +
   # scale_x_log10(labels = scales::comma)
   
@@ -209,7 +211,7 @@ yield_boxplot <- ggplot(insect_remove_normalised, aes(x=Air_Sampler, y = DNA_yie
   labs(y = "DNA yield (ng)", x = "Air Sampler") +
   scale_x_discrete(labels = c(
     "Coriolis Compact" = "Coriolis\nCompact",
-    "Coriolis Micro" = "Coriolis\nMicro",
+    "Coriolis μ" = "Coriolis\nμ",
     "InnovaPrep Bobcat" = "InnovaPrep\nBobcat",
     "InnovaPrep Cub" = "InnovaPrep\nCub",
     "SASS 3100" = "SASS\n3100"
@@ -223,7 +225,7 @@ norm_yield_boxplot <- ggplot(insect_remove_normalised, aes(x=Air_Sampler, y = no
   labs(y = " Normalised DNA yield (ng/L)", x = "Air Sampler") +
   scale_x_discrete(labels = c(
     "Coriolis Compact" = "Coriolis\nCompact",
-    "Coriolis Micro" = "Coriolis\nMicro",
+    "Coriolis μ" = "Coriolis\nμ",
     "InnovaPrep Bobcat" = "InnovaPrep\nBobcat",
     "InnovaPrep Cub" = "InnovaPrep\nCub",
     "SASS 3100" = "SASS\n3100"

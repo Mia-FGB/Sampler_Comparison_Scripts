@@ -42,6 +42,10 @@ marti_meta <- marti_meta %>%
     HP100k = Count / NumReads * 100000
   )
 
+#rename sampler
+marti_meta$Sampler <- gsub("Micro", "μ", marti_meta$Sampler)
+marti_meta$Sample_ID <- gsub("Micro", "μ", marti_meta$Sample_ID)
+
 # Filter the data on read count and HPM
 filtered_marti <- marti_meta  %>% 
   filter(HPM >= 100, Count > 5)
@@ -61,7 +65,7 @@ custom_theme <- theme_minimal(base_size = 12) +
 
 sampler_labels <- c(
   "Compact" = "Coriolis\nCompact",
-  "Micro" = "Coriolis\nMicro",
+  "μ" = "Coriolis μ",
   "Bobcat" = "InnovaPrep\nBobcat",
   "Cub" = "InnovaPrep\nCub",
   "Sass" = "SASS\n3100"
@@ -69,11 +73,20 @@ sampler_labels <- c(
 
 sampler_levels <- c(
   "Compact",
-  "Micro",
+  "μ",
   "Bobcat",
   "Cub",
   "Sass"
 )
+
+sampler_filename_map <- c(
+  "Bobcat" = "Bobcat",
+  "Compact" = "Compact",
+  "μ" = "Mu",       # Use "Mu" in filenames
+  "Cub" = "Cub",
+  "Sass" = "Sass"
+)
+
 
 location_labels <- c(
   "NHM" = "Natural History Museum",
@@ -167,8 +180,10 @@ plot_top_taxa_by_sampler <- function(data, samplers, rank, color_mapping, output
     # Capitalise first letter of rank for filename
     rank_clean <- paste0(toupper(substring(rank, 1, 1)), substring(rank, 2))
     
+    sampler_safe <- sampler_filename_map[[sampler]]  # gets "Mu" if sampler is "μ"
+    
     # Save plot
-    file_name <- file.path(output_dir, paste0(rank_clean, "_Top", top_n, "_", sampler, ".png"))
+    file_name <- file.path(output_dir, paste0(rank_clean, "_Top", top_n, "_", sampler_safe, ".png"))
     ggsave(file_name, plot = p, width = 12, height = 8)
   }
 }
@@ -243,11 +258,12 @@ plot_grouped_top_taxa(
 # Phylum plot per sampler - calculates top 5 indpeendetly for each sampler
 plot_top_taxa_by_sampler(
   data = filtered_marti,
-  samplers = c("Compact", "Micro", "Bobcat", "Cub", "Sass"),
+  samplers = c("Compact", "μ", "Bobcat", "Cub", "Sass"),
   rank = "phylum",
   color_mapping = phy_color_mapping,
   output_dir = "Images/top5"
 )
+
 
 ## Genus ---------------------------------------------------
 marti_genus <- get_top_taxa(filtered_marti, "genus", top_n = 5)
@@ -282,12 +298,11 @@ plot_grouped_top_taxa(
 
 plot_top_taxa_by_sampler(
   data = filtered_marti,
-  samplers = c("Compact", "Micro", "Bobcat", "Cub", "Sass"),
+  samplers = c("Compact", "μ", "Bobcat", "Cub", "Sass"),
   rank = "genus",
   color_mapping = gen_color_mapping,
   output_dir = "Images/top5/"
 ) 
-
 
 ##Species ----------------------------------
 
@@ -318,7 +333,7 @@ plot_grouped_top_taxa(
 
 plot_top_taxa_by_sampler(
   data = filtered_marti,
-  samplers = c("Compact", "Micro", "Bobcat", "Cub", "Sass"),
+  samplers = c("Compact", "μ", "Bobcat", "Cub", "Sass"),
   rank = "species",
   color_mapping = spe_color_mapping,
   output_dir = "Images/top5"
@@ -330,11 +345,6 @@ plot_grouped_top_taxa_replicates(
   color_mapping = spe_color_mapping,
   output_path = "Images/top5/Species_Top5_Repeats.png"
 )
-
-
-
-
-
 
 
 # Older code --- PHYLOSEQ data -----------------------------------------------------------

@@ -42,6 +42,9 @@ marti_meta <- marti_meta %>%
     HP100k = Count / NumReads * 100000
   )
 
+#rename sampler
+marti_meta$Sampler <- gsub("Micro", "μ", marti_meta$Sampler)
+
 # Filter the data on read count and HPM
 filtered_marti <- marti_meta  %>% 
   filter(HPM >= 100, Count > 5)
@@ -54,7 +57,7 @@ filtered_wide <- filtered_marti %>%
 # Plot aesthetics ---------
 sampler_colours <- setNames(brewer.pal(5, "Set2"), 
                             c("Bobcat", "Compact", 
-                              "Micro", "Cub", 
+                              "μ", "Cub", 
                               "Sass"))
 # Theme for plots ------
 custom_theme <- theme_minimal(base_size = 12) +
@@ -76,7 +79,7 @@ duration_labels <- c(
 
 sampler_levels <- c(
   "Compact",
-  "Micro",
+  "μ",
   "Bobcat",
   "Cub",
   "Sass"
@@ -146,6 +149,8 @@ richness_combined <- rbind(species_summary, genus_summary, phylum_summary)
 
 # Merge on the metadata
 richness_data <- merge(richness_combined, meta, by.x = "Sample", by.y = "Sample_ID", all.x = TRUE)
+#rename sampler
+richness_data $Sampler <- gsub("Micro", "μ", richness_data$Sampler)
 
 # Calculate richness per 100k reads - using meta 
 richness_data$Richness_per_100k <- (richness_data$Richness / richness_data$NumReads) * 100000
@@ -193,7 +198,7 @@ rich_plot <- ggplot(richness_data_avg, aes(x = Sampler, y = mean_richness,
   labs(x = "Sampler", y = "Mean taxonomic richness (per 100k reads) ± SE",
        fill = "Taxonomic level") +
   scale_x_discrete(labels = c(
-    "Compact" = "Coriolis\nCompact", "Micro" = "Coriolis\nMicro",
+    "Compact" = "Coriolis\nCompact", "μ" = "Coriolis μ",
     "Bobcat" = "InnovaPrep\nBobcat", "Cub" = "InnovaPrep\nCub",
     "Sass" = "SASS\n3100" )) +
   custom_theme
@@ -246,9 +251,13 @@ missing_samples_df <- data.frame(
 uniq <- bind_rows(uniq_counts, missing_samples_df) %>%
   left_join(meta, by = "Sample_ID")
 
+#rename sampler
+uniq$Sampler <- gsub("Micro", "μ", uniq$Sampler)
+
 # calculate per 100k reads
 # Calculate unique taxa per 100k reads
 uniq$uniq_per_100k <- (uniq$uniq_count / uniq$NumReads) * 100000
+
 
 # Can then plot this uniq data set to see samples specific unique species
 
@@ -283,6 +292,7 @@ taxa_counts <- long_taxa %>%
   group_by(Sampler, Type) %>%
   summarise(n_taxa = n(), .groups = "drop")
 
+
 # Step 6: Sum total reads per sampler
 reads_per_sampler <- meta %>%
   group_by(Sampler) %>%
@@ -292,6 +302,9 @@ reads_per_sampler <- meta %>%
 taxa_counts_per_100k <- taxa_counts %>%
   left_join(reads_per_sampler, by = "Sampler") %>%
   mutate(taxa_per_100k = round((n_taxa / total_reads) * 100000, 2))
+
+#rename sampler
+taxa_counts_per_100k$Sampler <- gsub("Micro", "μ", taxa_counts_per_100k$Sampler)
 
 
 #Plotting------------------------
@@ -325,7 +338,7 @@ location_uniq <- ggplot(uniq_summary_plot, aes(x=Sampler, y = uniq_mean, fill = 
         y = "Mean number of unique species per 100k reads ± SE") +
   scale_x_discrete(labels = c(
     "Compact" = "Coriolis\nCompact",
-    "Micro" = "Coriolis\nMicro",
+    "μ" = "Coriolis μ",
     "Bobcat" = "InnovaPrep\nBobcat",
     "Cub" = "InnovaPrep\nCub",
     "Sass" = "SASS\n3100"
@@ -349,7 +362,7 @@ shared_unique <- ggplot(taxa_counts_per_100k, aes(x = Sampler, y = taxa_per_100k
     fill = "Taxon type"
   ) +  scale_x_discrete(labels = c(
     "Compact" = "Coriolis\nCompact",
-    "Micro" = "Coriolis\nMicro",
+    "μ" = "Coriolis μ",
     "Bobcat" = "InnovaPrep\nBobcat",
     "Cub" = "InnovaPrep\nCub",
     "Sass" = "SASS\n3100"
