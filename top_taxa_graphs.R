@@ -57,7 +57,7 @@ palette <- c('#8B4513', '#9e0142', '#d53e4f', '#f46d43',
                        '#fdae61','#fee08b', '#e6f598', '#abdda4',
                        '#66c2a5','#3288bd', '#5e4fa2', '#A672A7')
 
-custom_theme <- theme_minimal(base_size = 32) +
+custom_theme <- theme_minimal(base_size = 12) +
   theme(
     axis.line = element_line(color = "black", linewidth = 0.3),
     panel.grid.minor = element_blank(),
@@ -214,7 +214,8 @@ plot_grouped_top_taxa_replicates <- function(data, rank, color_mapping, output_p
                )) +
     labs(
       x = "Sample replicate",
-      y = "Hits per 100,000"
+      y = "Hits per 100,000",
+      fill = "Species"  # <- This changes the legend title
     ) +
     scale_fill_manual(values = color_mapping, na.value = "grey80") +
     scale_y_continuous(
@@ -224,11 +225,23 @@ plot_grouped_top_taxa_replicates <- function(data, rank, color_mapping, output_p
     theme(
       axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
       axis.title.x = element_blank(),
-      plot.margin = margin(10, 10, 30, 10)
+      plot.margin = margin(10, 10, 30, 10),
+      legend.position = "bottom"
     ) 
   
+  # Add an asterisk above bars with insects
+  p <- p + 
+    geom_text(
+      data = data %>% 
+        filter(Insect == "Yes") %>% 
+        distinct(Sample_Label, .keep_all = TRUE),  # ensure one label per bar
+      aes(x = Sample_Label, y = 16000, label = "*"),  # fixed height above max
+      inherit.aes = FALSE,
+      size = 8
+    )
+  
   # Save the plot
-  ggsave(output_path, plot = p, width = 12, height = 8, dpi = 300)
+  ggsave(output_path, plot = p, width = 12, height = 10, dpi = 300)
 }
 
 
@@ -314,12 +327,12 @@ unique_species_df <- as.data.frame(unique_species)
 
 # Create a color palette with 39 colors
 spe_colors <- c(
-  "#d96567", "#658eaf", "#6ea66d", "#956a9b", "#f2a961", "#f2f27e", "#9e7056", "#eba7cb",
-  "#919191", "#84b8a8", "#efb098", "#9ea8c1", "#dba6c7", "#b1cd82", "#f2dd7c", "#dac7ab",
-  "#aaaaaa", "#4b9680", "#ce8954", "#8784aa", "#db6fa6", "#799e50", "#dab959", "#9e8250",
-  "#616161", "#85633b", "#cdb88c", "#eae2cd", "#cadedb", "#78aba6", "#27615c", "#644a81",
-  "#a19bb9", "#e5b880", "#ebebeb", "#b59262", "#97c3bc", "#d4c39c", "#337e73"
-)
+  "#7f0000", "#d6604d",  "#8784aa", "#6ea66d", "#d73027", "#f2a961", "#f2f27e", "#9e7056",
+  "#f1b6da", "#616161", "#85633b", "#cdb88c", "#f6e8c3", "#c7eae5", "#35978f", "#27615c",
+  "#a19bb9", "#e5b880", "#abebeb", "#b59262", "#4519b4", "#d4c39c", "#92c5de", "#6e016b",
+  "#bab63a", "#4b9680", "#8784f7", "#db6fa6", "#1a9850", "#dab959", "#9e8250",
+  "#34bbab", "#abdda4", "#efb098", "#1ab7c4", "#dba6c7", "#b1cd82", "#fc8d59", "#1117bb"
+) 
 
 # Map to your species (or genera)
 spe_color_mapping <- setNames(spe_colors[1:length(unique_species)], unique_species)
@@ -345,6 +358,9 @@ plot_grouped_top_taxa_replicates(
   color_mapping = spe_color_mapping,
   output_path = "Images/top5/Species_Top5_Repeats.png"
 )
+
+
+
 
 
 # Older code --- PHYLOSEQ data -----------------------------------------------------------

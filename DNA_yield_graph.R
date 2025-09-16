@@ -60,8 +60,31 @@ custom_theme <- theme_minimal(base_size = 12) +
 air_sampler_palette <- setNames(brewer.pal(5, "Set2"), 
                                 c("InnovaPrep Bobcat", "Coriolis Compact", 
                                   "Coriolis μ", "InnovaPrep Cub", 
-                                  "SASS 3100"))
+                                  "SASS 4100"))
 
+# Get some summary stats to report
+summary <- data_air_vol %>% 
+  group_by(Air_Sampler, Collection_time) %>% 
+  summarise(
+    n = n(),
+    mean_yield = mean(DNA_yield, na.rm = TRUE),
+    sd_yield   = sd(DNA_yield, na.rm = TRUE),
+    se_yield   = sd(DNA_yield, na.rm = TRUE) / sqrt(n())
+  )
+
+# Insect removed
+summary_no_insect <- insect_remove_normalised %>% 
+  group_by(Air_Sampler, Collection_time) %>% 
+  summarise(
+    n = n(),
+    mean_yield = mean(DNA_yield, na.rm = TRUE),
+    se_yield   = sd(DNA_yield, na.rm = TRUE) / sqrt(n()),
+    mean_norm_yield = mean(normalised_yield, na.rm = TRUE),
+    se_norm_yield   = sd(normalised_yield, na.rm = TRUE) / sqrt(n())
+  )
+
+# Insect samples 
+insect_samples <- subset(data_air_vol, grepl("Yes", Insect))
 
 # Plots ---------
 # Scatter graph of DNA yield against volume of air sampled 
@@ -108,14 +131,11 @@ dna_yield <- ggplot(data_air_vol, aes(x = air_volume, y = DNA_yield)) +
     labels = c("Church Farm", "NHM")) +
   
   # Labels and theme
-  labs(x = "Volume of air sampled (L)", 
+  labs(x = "Volume of air sampled (L), log scale", 
        y = "DNA yield (ng)",
        colour = "Air Sampler") +
-  custom_theme
-  # scale_y_log10() +
-  # scale_x_log10(labels = scales::comma)
-  
-dna_yield
+  custom_theme +
+  scale_x_log10(labels = scales::comma)
 
 no_insect_dna_yield <- ggplot(insect_remove_normalised, aes(x = air_volume, y = DNA_yield)) +
   
@@ -133,22 +153,26 @@ no_insect_dna_yield <- ggplot(insect_remove_normalised, aes(x = air_volume, y = 
     labels = c("Church Farm", "NHM")) +
   
   # Labels and theme
-  labs(x = "Volume of air sampled (L)", 
+  labs(x = "Volume of air sampled (L), log scale", 
        y = "DNA yield (ng)",
        colour = "Air Sampler") +
-  custom_theme 
+  custom_theme +
+  scale_x_log10(labels = scales::comma)
 
 no_insect_dna_yield
 
 #Combine plots
 com_dna_yield <-  dna_yield + no_insect_dna_yield +
+  plot_annotation(tag_levels = "A") & 
   plot_layout(guides = "collect") &
   theme(legend.position = "right")
 
+
 # Save plots
-ggsave("images/DNA_yield/no_inse_yield_air_vol.pdf", no_insect_dna_yield, width=10, height=6, dpi = 300 )
-ggsave("images/DNA_yield/yield_air_vol.pdf", dna_yield, width=10, height=6, dpi = 300 )
-ggsave("images/DNA_yield/Comb_DNA_yield_scatter.pdf", com_dna_yield, width=12, height=6, dpi = 300 )
+ggsave("images/DNA_yield/no_inse_yield_air_vol_log.pdf", no_insect_dna_yield, width=10, height=6, dpi = 300 )
+ggsave("images/DNA_yield/yield_air_vol_log.pdf", dna_yield, width=10, height=6, dpi = 300 )
+ggsave("images/DNA_yield/Comb_DNA_yield_scatter_log.pdf", com_dna_yield, width=12, height=6, dpi = 300 )
+
 
 
 #Plotting genera count per 1000 reads----------------------
@@ -219,7 +243,7 @@ yield_boxplot <- ggplot(insect_remove_normalised, aes(x=Air_Sampler, y = DNA_yie
     "Coriolis μ" = "Coriolis μ",
     "InnovaPrep Bobcat" = "InnovaPrep\nBobcat",
     "InnovaPrep Cub" = "InnovaPrep\nCub",
-    "SASS 3100" = "SASS\n3100"
+    "SASS 4100" = "SASS\n4100"
   ))
 
 # DNA yield normalised by air volume
@@ -233,11 +257,12 @@ norm_yield_boxplot <- ggplot(insect_remove_normalised, aes(x=Air_Sampler, y = no
     "Coriolis μ" = "Coriolis μ",
     "InnovaPrep Bobcat" = "InnovaPrep\nBobcat",
     "InnovaPrep Cub" = "InnovaPrep\nCub",
-    "SASS 3100" = "SASS\n3100"
+    "SASS 4100" = "SASS\n4100"
   ))
 
 comb_boxplot <- yield_boxplot + norm_yield_boxplot +
   plot_layout(guides = "collect") &
+  plot_annotation(tag_levels = "A") & 
   theme(legend.position = "right")
 
 comb_boxplot

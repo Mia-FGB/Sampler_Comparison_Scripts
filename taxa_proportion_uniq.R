@@ -4,14 +4,56 @@
 library(dplyr)
 library(ggplot2)
 library(tidyr)
+library(stringr)
 library(reshape2)
 library(scales)
 library(RColorBrewer)
 library(showtext)
+library(patchwork)
 
 # Use a font that supports Unicode
 font_add_google("Roboto")
 showtext_auto()
+
+# Plot aesthetics ---------
+sampler_colours <- setNames(brewer.pal(5, "Set2"), 
+                            c("Bobcat", "Compact", 
+                              "μ", "Cub", 
+                              "Sass"))
+# Theme for plots ------
+custom_theme <- theme_minimal(base_size = 12) +
+  theme(
+    axis.line = element_line(color = "black", linewidth = 0.3),
+    panel.grid.minor = element_blank(),
+  )
+
+location_labels <- c(
+  "NHM" = "Natural History Museum",
+  "Cfarm" = "Church Farm"
+)
+
+
+duration_labels <- c(
+  "25" = "25 minutes",
+  "50" = "50 minutes"
+)
+
+sampler_levels <- c(
+  "Compact",
+  "μ",
+  "Bobcat",
+  "Cub",
+  "Sass"
+)
+
+sampler_levels_2 <- c(
+  "Compact",
+  "Micro",
+  "Bobcat",
+  "Cub",
+  "Sass"
+)
+
 
 # Load in data ---------
 # Metadata
@@ -19,6 +61,7 @@ meta <- read.csv("metadata/sample_table.csv")
 
 # Remove commas and convert to numeric
 meta$NumReads <- as.numeric(gsub(",", "", meta$NumReads))
+
 
 ## MARTi ---
 marti <- read.delim("marti_outputs/marti_Jul_150_v2/summed_marti_assignments_lca_0.1_all_levels_2025-JUL-9_11-52-34.tsv")
@@ -52,7 +95,8 @@ marti_meta <- marti_meta %>%
 #rename sampler
 marti_meta$Sampler <- gsub("Micro", "μ", marti_meta$Sampler)
 
-# Filter the data on read count and HPM
+# Filtering ---------
+# Filter the data on read count and HPM !!
 filtered_marti <- marti_meta  %>% 
   filter(HPM >= 100, Count > 5)
 
@@ -60,37 +104,6 @@ filtered_marti <- marti_meta  %>%
 filtered_wide <- filtered_marti %>%
   select(Name, NCBI.ID, NCBI.Rank, Sample_ID, Count) %>%  # adjust if your ID columns differ
   pivot_wider(names_from = Sample_ID, values_from = Count, values_fill = 0)
-
-# Plot aesthetics ---------
-sampler_colours <- setNames(brewer.pal(5, "Set2"), 
-                            c("Bobcat", "Compact", 
-                              "μ", "Cub", 
-                              "Sass"))
-# Theme for plots ------
-custom_theme <- theme_minimal(base_size = 12) +
-  theme(
-    axis.line = element_line(color = "black", linewidth = 0.3),
-    panel.grid.minor = element_blank(),
-  )
-
-location_labels <- c(
-  "NHM" = "Natural History Museum",
-  "Cfarm" = "Church Farm"
-)
-
-
-duration_labels <- c(
-  "25" = "25 minutes",
-  "50" = "50 minutes"
-)
-
-sampler_levels <- c(
-  "Compact",
-  "μ",
-  "Bobcat",
-  "Cub",
-  "Sass"
-)
 
 
 # Function to extract one taxonomic level  ----------
@@ -109,7 +122,7 @@ marti_phylum  <- extract_rank_df(filtered_wide, "phylum")
 # Data wrangling --------------
 
 # Function to create presence absence matrix
-# If count below 3 markes as absent 
+
 make_presence_absence <- function(df) {
   result_df <- df   # Copy the original data to avoid modifying it directly
   
@@ -207,7 +220,7 @@ rich_plot <- ggplot(richness_data_avg, aes(x = Sampler, y = mean_richness,
   scale_x_discrete(labels = c(
     "Compact" = "Coriolis\nCompact", "μ" = "Coriolis μ",
     "Bobcat" = "InnovaPrep\nBobcat", "Cub" = "InnovaPrep\nCub",
-    "Sass" = "SASS\n3100" )) +
+    "Sass" = "SASS\n4100" )) +
   custom_theme
 
 rich_plot 
@@ -348,7 +361,7 @@ location_uniq <- ggplot(uniq_summary_plot, aes(x=Sampler, y = uniq_mean, fill = 
     "μ" = "Coriolis μ",
     "Bobcat" = "InnovaPrep\nBobcat",
     "Cub" = "InnovaPrep\nCub",
-    "Sass" = "SASS\n3100"
+    "Sass" = "SASS\n4100"
   )) + 
   custom_theme 
 
@@ -372,7 +385,7 @@ shared_unique <- ggplot(taxa_counts_per_100k, aes(x = Sampler, y = taxa_per_100k
     "μ" = "Coriolis μ",
     "Bobcat" = "InnovaPrep\nBobcat",
     "Cub" = "InnovaPrep\nCub",
-    "Sass" = "SASS\n3100"
+    "Sass" = "SASS\n4100"
   )) + 
   custom_theme
 
@@ -380,6 +393,129 @@ shared_unique
 
 ggsave("Images/uniq_shared/Unique_Shared_Species_per_Sampler.pdf",
        plot =shared_unique , width = 12, height = 8)
+
+
+# Number of reads representing unique species -----
+
+# Calculate total read number of shared and unique species 
+# Need to label species as unique or shared whilst retaining read counts
+
+
+# Merge on total count from meta
+marti_species_long <- marti_long %>%
+  left_join(meta, by = "Sample_ID") %>%
+  filter(NCBI.Rank == "species") %>%   # Filter long data to species 
+  mutate(
+    HP100k = Count / NumReads * 100000, # Calculate HP100k 
+    sampler = Sampler
+  )
+
+## --- Tidy sampler_presence and flag uniqueness
+samplers <- c("Bobcat", "Compact", "Cub", "Micro", "Sass")
+
+pres_long <- sampler_presence %>%
+  select(Name, all_of(samplers)) %>%
+  pivot_longer(
+    cols = -Name,
+    names_to = "sampler",
+    values_to = "present"
+  ) %>%
+  mutate(present = present == 1) %>%
+  group_by(Name) %>%
+  mutate(is_unique = sum(present) == 1) %>%
+  ungroup()
+
+# Join to counts and classify as unique/shared for that sampler
+taxa_join <- marti_species_long %>%
+  inner_join(pres_long, by = c("Name", "sampler")) %>%
+  mutate(category = ifelse(present & is_unique, "unique",
+                           ifelse(present, "shared", "absent"))) %>%
+  filter(category != "absent")
+
+# Read-HP100k tallies per sampler
+read_HP100ks <- taxa_join %>%
+  group_by(sampler) %>%
+  summarise(
+    HP100k_unique = sum(HP100k[category == "unique"], na.rm = TRUE),
+    avg_HP100k_unique = mean(HP100k[category == "unique"], na.rm = TRUE),
+    se_HP100k_unique = sd(HP100k[category == "unique"], na.rm = TRUE) /
+      sqrt(sum(category == "unique")),
+    
+    HP100k_shared = sum(HP100k[category == "shared"], na.rm = TRUE),
+    avg_HP100k_shared = mean(HP100k[category == "shared"], na.rm = TRUE),
+    se_HP100k_shared = sd(HP100k[category == "shared"], na.rm = TRUE) /
+      sqrt(sum(category == "shared")),
+    .groups = "drop"
+  )
+
+# Pivot wide for graph
+read_HP100ks_long <- read_HP100ks %>%
+  pivot_longer(
+    cols = -sampler,
+    names_to   = c(".value", "Type"),
+    names_pattern = "(HP100k|avg_HP100k|se_HP100k)_(unique|shared)"
+  ) %>%
+  mutate(Type = str_to_title(Type))   # "Unique" / "Shared"
+
+
+# Plot read counts (HP100k) Shared & Unique 
+read_HP100ks_long$sampler <- factor(read_HP100ks_long$sampler, levels = sampler_levels_2)
+
+shared_unique_read <- ggplot(read_HP100ks_long, aes(x = sampler, y = HP100k, fill = Type)) +
+  geom_bar(stat = "identity", position = "stack", colour = "black") +
+  scale_fill_manual(values = c("Unique" = '#9e0142', "Shared" = '#3288bd')) +
+  labs(
+    y = "Read Counts per 100k reads",
+    x = "Sampler",
+    fill = "Taxon type"
+  ) +  scale_x_discrete(labels = c(
+    "Compact" = "Coriolis\nCompact",
+    "Micro" = "Coriolis μ",
+    "Bobcat" = "InnovaPrep\nBobcat",
+    "Cub" = "InnovaPrep\nCub",
+    "Sass" = "SASS\n4100"
+  )) + 
+  custom_theme
+
+shared_unique_read
+
+ggsave("Images/uniq_shared/Unique_Shared_Species_ReadCount_per_Sampler.pdf",
+       plot =shared_unique_read , width = 12, height = 8)
+
+# Look into abundant species 
+
+summary_uniq <- taxa_join %>%
+  filter(category == "unique") %>%
+  group_by(Sampler, Name) %>%
+  summarise(
+    total_HP100k = sum(HP100k, na.rm = TRUE),
+    n_samples    = n_distinct(Sample_ID[!is.na(HP100k) & HP100k > 0], na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  group_by(Sampler) %>%
+  slice_max(order_by = total_HP100k, n = 5, with_ties = TRUE) %>%
+  arrange(Sampler, desc(total_HP100k)) %>%
+  ungroup()
+
+write.csv(summary_uniq, "Images/uniq_shared/summary_uniq.csv", row.names = FALSE)
+
+## Combining the Unique and Shared Plots --------
+
+combined <-
+  (shared_unique | shared_unique_read) +
+  plot_layout(guides = "collect", widths = c(1, 1)) +
+  plot_annotation(tag_levels = "A", tag_suffix = "") & 
+  theme(
+    legend.position = "right",            # one combined legend
+    plot.tag = element_text(face = "bold", size = 12),
+    plot.tag.position = c(0.01, 0.98)      # A B at top left of each panel
+  )
+
+combined
+
+ggsave("Images/uniq_shared/Both_Unique_Shared_Species_per_Sampler.pdf",
+       plot=combined, width = 12, height = 8)
+
 
 
 
@@ -397,7 +533,7 @@ ggsave("../Images/graphs_marti_0624/uniq_shared/Unique_Genus_Sample_Length.svg",
        plot = length_uniq , device = "svg", width = 10, height = 7)
 
 
-#Total species in each sample ------------
+## Total species in each sample ------------
 
 numeric_col_presence_data <- marti_presence_data[, 3:ncol(marti_presence_data)]
 total <- data.frame(Sample_ID = colnames(numeric_col_presence_data), 
@@ -446,9 +582,9 @@ ggsave("../Images/graphs_marti_0624/uniq_shared/Proportion_Unique_Genera_Locatio
        plot = all_uniq_prop_bar , device = "svg", width = 10, height = 7)
 
 
-# Looking at uniq within a Location ---------------------------------------
+## Looking at uniq within a Location ---------------------------------------
 
-#Church Farm, need to recalculate uniq counts ignoring those in NHM data ----
+#Church Farm, need to recalculate uniq counts ignoring those in NHM data 
 CF_samples <- marti_presence_data %>% 
   select(1:2, starts_with("CF"))
 
@@ -465,7 +601,7 @@ CF_uniq_name_num <- CF_uniq_name %>%
   group_by(variable) %>% 
   summarise(count = n()) 
 
-#NHM same as with CF ----
+## NHM same as with CF ----
 NHM_samples <- marti_presence_data %>% 
   select(1:2, starts_with("NHM"))
 
@@ -525,7 +661,7 @@ Uniq_per_location <- Uniq_per_location %>%
     )
   )
 
-#Plot proportion of uniq & shared Taxa, by location ------
+## Plot proportion of uniq & shared Taxa, by location ------
 prop_location <- ggplot(Uniq_per_location, aes(x = Sample_ID, y = Count, fill = Number)) +
   geom_bar(stat = "identity",
            #position = "fill"
@@ -539,7 +675,7 @@ prop_location <- ggplot(Uniq_per_location, aes(x = Sample_ID, y = Count, fill = 
 ggsave("../Images/graphs_marti_0624/uniq_shared/Proportion_Unique_Genera_Location_Seperate_count.svg",
        plot = prop_location , device = "svg", width = 10, height = 7)
 
-#Unique per Sampler ----------------------------------------------------
+## Unique per Sampler ----------------------------------------------------
 #Bobcat
 Bobcat_samples <- marti_presence_data %>% 
   select(1:2, contains("Bobcat"))
@@ -681,6 +817,12 @@ ggsave("../Images/graphs_marti_0624/uniq_shared/Proportion_Unique_Genera_Sampler
        plot = sampler_uniq_prop_bar , device = "svg", width = 10, height = 7)
 
 
+
+
+
+
+
+
 ##
 #Older work ----------
 ##
@@ -703,6 +845,12 @@ marti_genus_unique_taxa <- marti_genus_presence_data$Taxon[rowSums(marti_genus_p
 # Find columns where unique taxa are present
 col_marti_genus_unique_taxa <- colnames(marti_genus_presence_data)[
   colSums(marti_genus_presence_data[rowSums(marti_genus_presence_data[, -c(1,2,3)]) == 1, -c(1,2,3)]) > 0]
+
+
+
+
+
+
 
 #MEGAN data ----------------
 
